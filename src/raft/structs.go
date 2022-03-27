@@ -124,8 +124,8 @@ func (s State) String() string {
 const (
 	// all times in milliseconds
 	HB_INTERVAL int = 200 // send a heartbeat per this time
-	HB_WAIT_MIN int = 25  // allow this much time at least for HB
-	HB_WAIT_MAX int = 500 // allow this much time at most for HB
+	HB_WAIT_MIN int = 400 // allow this much time at least for HB
+	HB_WAIT_MAX int = 600 // allow this much time at most for HB
 )
 
 //
@@ -152,8 +152,8 @@ type ApplyMsg struct {
 }
 
 type AppendEntriesArgs struct {
-	TermNumber int
-	LeaderId   int
+	AppendEntriesTermNumber int
+	LeaderId                int
 }
 
 type AppendEntriesReply struct{}
@@ -162,8 +162,8 @@ type AppendEntriesReply struct{}
 // RequestVote RPC arguments structure.
 //
 type RequestVoteArgs struct {
-	TermNumber  int
-	CandidateId int
+	ReqVotesTermNumber int
+	CandidateId        int
 }
 
 //
@@ -171,6 +171,6 @@ type RequestVoteArgs struct {
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
-	TermNumber  int
-	VoteGranted bool
+	ReplyVotesTermNumber int
+	VoteGranted          bool
 }
