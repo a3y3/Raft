@@ -7,7 +7,7 @@ import (
 
 // getNewElectionTimeout is called to calculate a new, random timeout value.
 // This happens at when this Raft server boots up and at the start of every election.
-func (rf *Raft) getNewElectionTimeout() time.Duration {
+func generateNewElectionTimeout() time.Duration {
 	rand.Seed(time.Now().UnixNano())
 	min := HB_INTERVAL + HB_WAIT_MIN
 	max := HB_INTERVAL + HB_WAIT_MAX
@@ -16,6 +16,8 @@ func (rf *Raft) getNewElectionTimeout() time.Duration {
 }
 
 func (rf *Raft) startElection() {
+	newTerm := rf.CreateNewTerm(candidate, generateNewElectionTimeout())
+	rf.setTerm(newTerm)
 
 }
 
@@ -23,22 +25,16 @@ func (rf *Raft) startElection() {
 // heartsbeats recently.
 func (rf *Raft) ticker() {
 	for !rf.killed() {
-		rf.mu.Lock()
-		timeout := rf.currentTerm.electionTimeout
-		rf.mu.Unlock()
+		timeout := rf.getElectionTimeout()
 
 		time.Sleep(timeout)
 
-		rf.mu.Lock()
-		recvdHb := rf.currentTerm.receivedHeartbeat
-		rf.mu.Unlock()
+		recvdHb := rf.getReceivedHeartBeat()
 
-		if !recvdHb {
-			rf.startElection()
+		if recvdHb {
+			rf.setReceivedHeartBeat(false)
 		} else {
-			rf.mu.Lock()
-			rf.currentTerm.receivedHeartbeat = false
-			rf.mu.Unlock()
+			rf.startElection()
 		}
 	}
 }

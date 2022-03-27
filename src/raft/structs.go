@@ -11,21 +11,70 @@ import (
 // A Go object implementing a single Raft peer.
 //
 type Raft struct {
-	mu          sync.Mutex          // Lock to protect shared access to this peer's state
-	peers       []*labrpc.ClientEnd // RPC end points of all peers
-	persister   *Persister          // Object to hold this peer's persisted state
-	me          int                 // this peer's index into peers[]
-	dead        int32               // set by Kill()
-	state       State               // state enum {follower/candidate/leader}
-	currentTerm Term                // current Term of the Raft peer.
-	logEntries  []logEntry
+	mu                sync.Mutex          // Lock to protect shared access to this peer's state
+	peers             []*labrpc.ClientEnd // RPC end points of all peers
+	persister         *Persister          // Object to hold this peer's persisted state
+	me                int                 // this peer's index into peers[]
+	dead              int32               // set by Kill()
+	currentTerm       Term                // current Term of the Raft peer.
+	logEntries        []logEntry
+	receivedHeartbeat bool
+}
+
+func (rf *Raft) getCurrentTermNumber() int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.currentTerm.number
+}
+
+func (rf *Raft) setState(state State) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.currentTerm.state = state
+}
+
+func (rf *Raft) getElectionTimeout() time.Duration {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.currentTerm.electionTimeout
+}
+
+func (rf *Raft) setElectionTimeout(newTimeout time.Duration) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.currentTerm.electionTimeout = newTimeout
+}
+
+func (rf *Raft) getReceivedHeartBeat() bool {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.receivedHeartbeat
+}
+
+func (rf *Raft) setReceivedHeartBeat(value bool) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.receivedHeartbeat = value
 }
 
 type Term struct {
-	number            int
-	votedFor          int           // candidateId that this server voted for in this term
-	electionTimeout   time.Duration // the timeout for this term. Reset every election term.
-	receivedHeartbeat bool
+	number          int
+	votedFor        int           // candidateId that this server voted for in this term
+	electionTimeout time.Duration // the timeout for this term. Reset every election term.
+	state           State         // state enum {follower/candidate/leader} the server was in for this term.
+}
+
+func (rf *Raft) setTerm(term Term) {
+
+}
+
+func (rf *Raft) CreateNewTerm(newState State, electionTimeout time.Duration) Term {
+	return Term{
+		number:          rf.getCurrentTermNumber() + 1,
+		votedFor:        -1,
+		electionTimeout: electionTimeout,
+		state:           newState,
+	}
 }
 
 type logEntry struct {
@@ -53,9 +102,10 @@ func (s State) String() string {
 }
 
 const (
-	HB_INTERVAL int = 1000 // ms
-	HB_WAIT_MIN int = 200  // allow this much time at least for HB; ms
-	HB_WAIT_MAX int = 400  // allow this much time at most for HB; ms
+	// all times in milliseconds
+	HB_INTERVAL int = 1000 // send a heartbeat per this time
+	HB_WAIT_MIN int = 200  // allow this much time at least for HB
+	HB_WAIT_MAX int = 400  // allow this much time at most for HB
 )
 
 //

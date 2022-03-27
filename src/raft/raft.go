@@ -17,13 +17,13 @@ import (
 // confusing debug output. any goroutine with a long-running loop
 // should call killed() to check whether it should stop.
 //
-func (rf *Raft) Kill() {
-	atomic.StoreInt32(&rf.dead, 1)
+func (rp *Raft) Kill() {
+	atomic.StoreInt32(&rp.dead, 1)
 	// Your code here, if desired.
 }
 
-func (rf *Raft) killed() bool {
-	z := atomic.LoadInt32(&rf.dead)
+func (rp *Raft) killed() bool {
+	z := atomic.LoadInt32(&rp.dead)
 	return z == 1
 }
 
@@ -40,16 +40,16 @@ func (rf *Raft) killed() bool {
 //
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
-	rf := &Raft{}
-	rf.peers = peers
-	rf.persister = persister
-	rf.me = me
+	rp := &Raft{}
+	rp.peers = peers
+	rp.persister = persister
+	rp.me = me
 
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
+	rp.readPersist(persister.ReadRaftState())
 
 	// start ticker goroutine to start elections
-	go rf.ticker()
+	go rp.ticker()
 
-	return rf
+	return rp
 }
