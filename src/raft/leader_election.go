@@ -10,16 +10,16 @@ import (
 // This happens at when this Raft server boots up and at the start of every election.
 func generateNewElectionTimeout() time.Duration {
 	rand.Seed(time.Now().UnixNano())
-	min := HB_INTERVAL + HB_WAIT_MIN
-	max := HB_INTERVAL + HB_WAIT_MAX
+	min := HB_WAIT_MIN
+	max := HB_WAIT_MAX
 	milliseconds := min + rand.Intn(max-min)
 	return time.Millisecond * time.Duration(milliseconds)
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	currentTerm := rf.getCurrentTermNumber()
-	if args.TermNumber >= currentTerm {
-		if args.TermNumber > currentTerm {
+	if args.AppendEntriesTermNumber >= currentTerm {
+		if args.AppendEntriesTermNumber > currentTerm {
 			term := rf.GetNewTerm(follower, generateNewElectionTimeout())
 			rf.setTerm(term)
 			go rf.follower()
@@ -29,14 +29,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (rf *Raft) leader() {
-	if rf.getCurrentState() == leader {
+	if rf.killed() || rf.getCurrentState() == leader {
 		return
 	}
 	rf.setCurrentState(leader)
-	for rf.getCurrentState() == leader {
+	for !rf.killed() && rf.getCurrentState() == leader {
 		appendEntriesArgs := AppendEntriesArgs{
-			TermNumber: rf.getCurrentTermNumber(),
-			LeaderId:   rf.me,
+			AppendEntriesTermNumber: rf.getCurrentTermNumber(),
+			LeaderId:                rf.me,
 		}
 		appendEntriesReply := AppendEntriesReply{}
 		for server_idx := range rf.peers {
@@ -44,25 +44,25 @@ func (rf *Raft) leader() {
 				rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
 			}
 		}
-		fmt.Printf("(%v) leader: sleeping for %v\n", rf.me, time.Millisecond*time.Duration(HB_INTERVAL))
+		rf.logMsg(fmt.Sprintf("sleeping for %v ms", time.Millisecond*time.Duration(HB_INTERVAL)))
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
 	}
 }
 
 func (rf *Raft) candidate() {
-	if rf.getCurrentState() == candidate {
+	if rf.killed() || rf.getCurrentState() == candidate {
 		return
 	}
 	newTerm := rf.GetNewTerm(candidate, generateNewElectionTimeout())
 	rf.setTerm(newTerm) // set this as the new term (also sets state to candidate)
 	currentTermNumber := rf.getCurrentTermNumber()
-	fmt.Printf("(%v) Started new term %v", rf.me, currentTermNumber)
+	rf.logMsg("Started new term!")
 	rf.setVotedFor(rf.me) // vote for itself
 	votes := 1
 
 	reqVotesArgs := RequestVoteArgs{
-		TermNumber:  currentTermNumber,
-		CandidateId: rf.me,
+		ReqVotesTermNumber: currentTermNumber,
+		CandidateId:        rf.me,
 	}
 	replyVotesArgs := RequestVoteReply{}
 
@@ -73,17 +73,16 @@ func (rf *Raft) candidate() {
 			if voteGranted {
 				votes++
 			}
-			if replyVotesArgs.TermNumber > currentTermNumber {
-				fmt.Printf("(%v) A new term has already started! Cancelling my election and becoming a follower\n", rf.me)
-				go rf.follower() // a new term has already started
+			if replyVotesArgs.ReplyVotesTermNumber > currentTermNumber {
+				rf.logMsg("A new term has already started! Cancelling my election.")
 				return
 			}
 		}
 	}
 
 	// election went well, let's check the results
-	elected := votes >= len(rf.peers)/2
-	fmt.Printf("(%v) got %v votes, so elected is %v\n", rf.me, votes, elected)
+	elected := votes > len(rf.peers)/2
+	rf.logMsg(fmt.Sprintf("got %v votes, so elected is %v\n", votes, elected))
 	if elected {
 		go rf.leader()
 	} else {
@@ -93,20 +92,20 @@ func (rf *Raft) candidate() {
 
 // This go routine starts a new election if this peer hasn't received heartsbeats recently.
 func (rf *Raft) follower() {
-	if rf.getCurrentState() == follower { // avoid creating multiple followers on this server. That will be disastrous!
+	if rf.killed() || rf.getCurrentState() == follower { // avoid creating multiple followers on this server. That will be disastrous!
 		return
 	}
 	rf.setCurrentState(follower)
-	for rf.getCurrentState() == follower {
+	for !rf.killed() && rf.getCurrentState() == follower {
 		timeout := rf.getElectionTimeout()
-		fmt.Printf("(%v) follower: sleeping for %v\n", rf.me, timeout)
+		rf.logMsg(fmt.Sprintf("Sleeping for %v ms", timeout))
 		time.Sleep(timeout)
 
 		recvdHb := rf.getReceivedHeartBeat()
 		if recvdHb {
 			rf.setReceivedHeartBeat(false)
 		} else {
-			fmt.Printf("(%v) Did not receive a heartbeat! Starting election...\n", rf.me)
+			rf.logMsg("Did not receive a heartbeat! Starting election...")
 			go rf.candidate()
 			return
 		}
@@ -127,11 +126,11 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	currentTerm := rf.getCurrentTermNumber()
 	votedFor := rf.getVotedFor()
-	if args.TermNumber < currentTerm || votedFor == -1 {
-		reply.TermNumber = currentTerm
+	if args.ReqVotesTermNumber < currentTerm || votedFor == -1 {
+		reply.ReplyVotesTermNumber = currentTerm
 		reply.VoteGranted = false
 	} else {
-		reply.TermNumber = currentTerm
+		reply.ReplyVotesTermNumber = currentTerm
 		reply.VoteGranted = true
 		rf.setVotedFor(args.CandidateId)
 	}

@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"log"
 	"sync/atomic"
 
 	"6.824/labrpc"
@@ -25,6 +26,10 @@ func (rf *Raft) Kill() {
 func (rf *Raft) killed() bool {
 	z := atomic.LoadInt32(&rf.dead)
 	return z == 1
+}
+
+func (rf *Raft) logMsg(msg string) {
+	log.Printf("[%v]--[%v]--[term %v]: %v\n", rf.me, rf.getCurrentState(), rf.getCurrentTermNumber(), msg)
 }
 
 //
