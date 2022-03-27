@@ -44,12 +44,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	newTerm := rf.GetNewTerm(candidate, generateNewElectionTimeout()) // cheat a bit initially so the follower routine doesn't exit immediately, and transitions to a follower. This is not harmful and will not actually start off each server as a candidate.
+	rf.setTerm(newTerm)
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
-	rf.setCurrentState(candidate) // cheat a bit initially so the follower routine doesn't exit immediately, and transitions to a follower. This is not harmful and will not actually start off each server as a candidate.
-	go rf.follower()              // become a follower at the start
+	go rf.follower() // become a follower at the start
 
 	return rf
 }

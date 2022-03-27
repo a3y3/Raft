@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -15,14 +16,36 @@ func generateNewElectionTimeout() time.Duration {
 	return time.Millisecond * time.Duration(milliseconds)
 }
 
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	currentTerm := rf.getCurrentTermNumber()
+	if args.TermNumber >= currentTerm {
+		if args.TermNumber > currentTerm {
+			term := rf.GetNewTerm(follower, generateNewElectionTimeout())
+			rf.setTerm(term)
+			go rf.follower()
+		}
+		rf.setReceivedHeartBeat(true)
+	}
+}
+
 func (rf *Raft) leader() {
 	if rf.getCurrentState() == leader {
 		return
 	}
 	rf.setCurrentState(leader)
 	for rf.getCurrentState() == leader {
+		appendEntriesArgs := AppendEntriesArgs{
+			TermNumber: rf.getCurrentTermNumber(),
+			LeaderId:   rf.me,
+		}
+		appendEntriesReply := AppendEntriesReply{}
+		for server_idx := range rf.peers {
+			if server_idx != rf.me {
+				rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
+			}
+		}
+		fmt.Printf("(%v) leader: sleeping for %v\n", rf.me, time.Millisecond*time.Duration(HB_INTERVAL))
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
-
 	}
 }
 
@@ -30,26 +53,28 @@ func (rf *Raft) candidate() {
 	if rf.getCurrentState() == candidate {
 		return
 	}
-	newTerm := rf.CreateNewTerm(candidate, generateNewElectionTimeout())
+	newTerm := rf.GetNewTerm(candidate, generateNewElectionTimeout())
+	rf.setTerm(newTerm) // set this as the new term (also sets state to candidate)
 	currentTermNumber := rf.getCurrentTermNumber()
-	rf.setTerm(newTerm)   // set this as the new term (also sets state to candidate)
+	fmt.Printf("(%v) Started new term %v", rf.me, currentTermNumber)
 	rf.setVotedFor(rf.me) // vote for itself
 	votes := 1
 
 	reqVotesArgs := RequestVoteArgs{
-		term:        currentTermNumber,
-		candidateId: rf.me,
+		TermNumber:  currentTermNumber,
+		CandidateId: rf.me,
 	}
 	replyVotesArgs := RequestVoteReply{}
 
 	for server_idx := range rf.peers {
 		ok := rf.sendRequestVote(server_idx, &reqVotesArgs, &replyVotesArgs)
 		if ok {
-			voteGranted := replyVotesArgs.voteGranted
+			voteGranted := replyVotesArgs.VoteGranted
 			if voteGranted {
 				votes++
 			}
-			if replyVotesArgs.term > currentTermNumber {
+			if replyVotesArgs.TermNumber > currentTermNumber {
+				fmt.Printf("(%v) A new term has already started! Cancelling my election and becoming a follower\n", rf.me)
 				go rf.follower() // a new term has already started
 				return
 			}
@@ -58,6 +83,7 @@ func (rf *Raft) candidate() {
 
 	// election went well, let's check the results
 	elected := votes >= len(rf.peers)/2
+	fmt.Printf("(%v) got %v votes, so elected is %v\n", rf.me, votes, elected)
 	if elected {
 		go rf.leader()
 	} else {
@@ -73,14 +99,16 @@ func (rf *Raft) follower() {
 	rf.setCurrentState(follower)
 	for rf.getCurrentState() == follower {
 		timeout := rf.getElectionTimeout()
-
+		fmt.Printf("(%v) follower: sleeping for %v\n", rf.me, timeout)
 		time.Sleep(timeout)
 
 		recvdHb := rf.getReceivedHeartBeat()
 		if recvdHb {
 			rf.setReceivedHeartBeat(false)
 		} else {
+			fmt.Printf("(%v) Did not receive a heartbeat! Starting election...\n", rf.me)
 			go rf.candidate()
+			return
 		}
 	}
 }
@@ -99,12 +127,13 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	currentTerm := rf.getCurrentTermNumber()
 	votedFor := rf.getVotedFor()
-	if args.term < currentTerm || votedFor == -1 {
-		reply.term = currentTerm
-		reply.voteGranted = false
+	if args.TermNumber < currentTerm || votedFor == -1 {
+		reply.TermNumber = currentTerm
+		reply.VoteGranted = false
 	} else {
-		reply.term = currentTerm
-		reply.voteGranted = true
+		reply.TermNumber = currentTerm
+		reply.VoteGranted = true
+		rf.setVotedFor(args.CandidateId)
 	}
 }
 
@@ -114,5 +143,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 //
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+	return ok
+}
+
+// Send an AppenEntries RPC to a server.
+// server is the index of the target server in rf.peers[].
+//
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	return ok
 }

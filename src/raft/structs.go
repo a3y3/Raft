@@ -83,10 +83,12 @@ type Term struct {
 }
 
 func (rf *Raft) setTerm(term Term) {
-
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.currentTerm = term
 }
 
-func (rf *Raft) CreateNewTerm(newState State, electionTimeout time.Duration) Term {
+func (rf *Raft) GetNewTerm(newState State, electionTimeout time.Duration) Term {
 	return Term{
 		number:          rf.getCurrentTermNumber() + 1,
 		votedFor:        -1,
@@ -121,9 +123,9 @@ func (s State) String() string {
 
 const (
 	// all times in milliseconds
-	HB_INTERVAL int = 1000 // send a heartbeat per this time
-	HB_WAIT_MIN int = 200  // allow this much time at least for HB
-	HB_WAIT_MAX int = 400  // allow this much time at most for HB
+	HB_INTERVAL int = 200 // send a heartbeat per this time
+	HB_WAIT_MIN int = 25  // allow this much time at least for HB
+	HB_WAIT_MAX int = 500 // allow this much time at most for HB
 )
 
 //
@@ -149,12 +151,19 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+type AppendEntriesArgs struct {
+	TermNumber int
+	LeaderId   int
+}
+
+type AppendEntriesReply struct{}
+
 //
 // RequestVote RPC arguments structure.
 //
 type RequestVoteArgs struct {
-	term        int
-	candidateId int
+	TermNumber  int
+	CandidateId int
 }
 
 //
@@ -162,6 +171,6 @@ type RequestVoteArgs struct {
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
-	term        int
-	voteGranted bool
+	TermNumber  int
+	VoteGranted bool
 }
