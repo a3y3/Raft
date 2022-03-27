@@ -21,13 +21,31 @@ type Raft struct {
 	receivedHeartbeat bool
 }
 
+func (rf *Raft) getVotedFor() int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.currentTerm.votedFor
+}
+
+func (rf *Raft) setVotedFor(index int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.currentTerm.votedFor = index
+}
+
 func (rf *Raft) getCurrentTermNumber() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	return rf.currentTerm.number
 }
 
-func (rf *Raft) setState(state State) {
+func (rf *Raft) getCurrentState() State {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.currentTerm.state
+}
+
+func (rf *Raft) setCurrentState(state State) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	rf.currentTerm.state = state
@@ -135,6 +153,8 @@ type ApplyMsg struct {
 // RequestVote RPC arguments structure.
 //
 type RequestVoteArgs struct {
+	term        int
+	candidateId int
 }
 
 //
@@ -142,5 +162,6 @@ type RequestVoteArgs struct {
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
-	// Your data here (2A).
+	term        int
+	voteGranted bool
 }
