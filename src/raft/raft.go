@@ -29,7 +29,7 @@ func (rf *Raft) killed() bool {
 }
 
 func (rf *Raft) logMsg(msg string) {
-	log.Printf("[%v]--[%v]--[term %v]: %v\n", rf.me, rf.getCurrentState(), rf.getCurrentTermNumber(), msg)
+	log.Printf("[%v]--[term %v]--[node %v]: %v\n", rf.getCurrentState(), rf.getCurrentTermNumber(), rf.me, msg)
 }
 
 //

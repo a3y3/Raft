@@ -11,7 +11,8 @@ import (
 // A Go object implementing a single Raft peer.
 //
 type Raft struct {
-	mu                sync.Mutex          // Lock to protect shared access to this peer's state
+	mu                sync.Mutex // Lock to protect shared access to this peer's state
+	rpcLock           sync.Mutex
 	peers             []*labrpc.ClientEnd // RPC end points of all peers
 	persister         *Persister          // Object to hold this peer's persisted state
 	me                int                 // this peer's index into peers[]
@@ -124,7 +125,7 @@ func (s State) String() string {
 const (
 	// all times in milliseconds
 	HB_INTERVAL int = 200 // send a heartbeat per this time
-	HB_WAIT_MIN int = 400 // allow this much time at least for HB
+	HB_WAIT_MIN int = 300 // allow this much time at least for HB
 	HB_WAIT_MAX int = 600 // allow this much time at most for HB
 )
 

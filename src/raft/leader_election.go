@@ -17,15 +17,19 @@ func generateNewElectionTimeout() time.Duration {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	rf.rpcLock.Lock()
 	currentTerm := rf.getCurrentTermNumber()
 	if args.AppendEntriesTermNumber >= currentTerm {
 		if args.AppendEntriesTermNumber > currentTerm {
 			term := rf.GetNewTerm(follower, generateNewElectionTimeout())
 			rf.setTerm(term)
+			rf.currentTerm.number = args.AppendEntriesTermNumber
+			rf.logMsg(fmt.Sprintf("Stepping down as leader and updating my term"))
 			go rf.follower()
 		}
 		rf.setReceivedHeartBeat(true)
 	}
+	rf.rpcLock.Unlock()
 }
 
 func (rf *Raft) leader() {
@@ -39,12 +43,13 @@ func (rf *Raft) leader() {
 			LeaderId:                rf.me,
 		}
 		appendEntriesReply := AppendEntriesReply{}
+		rf.logMsg("Sending hb to peers")
 		for server_idx := range rf.peers {
 			if server_idx != rf.me {
 				rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
 			}
 		}
-		rf.logMsg(fmt.Sprintf("sleeping for %v ms", time.Millisecond*time.Duration(HB_INTERVAL)))
+		rf.logMsg("Finished sending hb to peers")
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
 	}
 }
@@ -66,23 +71,38 @@ func (rf *Raft) candidate() {
 	}
 
 	for server_idx := range rf.peers {
-		replyVotesArgs := RequestVoteReply{}
-		ok := rf.sendRequestVote(server_idx, &reqVotesArgs, &replyVotesArgs)
-		if ok {
-			voteGranted := replyVotesArgs.VoteGranted
-			if voteGranted {
-				votes++
-			}
-			if replyVotesArgs.ReplyVotesTermNumber > currentTermNumber {
-				rf.logMsg("A new term has already started! Cancelling my election.")
-				return
+		if server_idx != rf.me {
+			replyVotesArgs := RequestVoteReply{}
+			rf.logMsg(fmt.Sprintf("Requesting vote from %v", server_idx))
+			ok := rf.sendRequestVote(server_idx, &reqVotesArgs, &replyVotesArgs)
+			if ok {
+				rf.logMsg(fmt.Sprintf("Got rpc reply with term %v and vote %v. currentTerm variable is %v", replyVotesArgs.ReplyVotesTermNumber, replyVotesArgs.VoteGranted, currentTermNumber))
+				if rf.getCurrentTermNumber() > currentTermNumber {
+					rf.logMsg("Running an expired election, cancelling it...")
+					return
+				}
+				if replyVotesArgs.ReplyVotesTermNumber >= rf.getCurrentTermNumber() {
+					voteGranted := replyVotesArgs.VoteGranted
+					if voteGranted {
+						votes++
+					}
+					if replyVotesArgs.ReplyVotesTermNumber > rf.getCurrentTermNumber() {
+						rf.logMsg("A new term has already started! Cancelling my election.")
+						return
+					}
+				}
 			}
 		}
 	}
 
+	if rf.getCurrentTermNumber() > currentTermNumber {
+		rf.logMsg("Exiting expired election!")
+		return
+	}
+
 	// election went well, let's check the results
 	elected := votes > len(rf.peers)/2
-	rf.logMsg(fmt.Sprintf("got %v votes, so elected is %v\n", votes, elected))
+	rf.logMsg(fmt.Sprintf("got %v out of % v votes, so elected is %v\n", votes, len(rf.peers), elected))
 	if elected {
 		go rf.leader()
 	} else {
@@ -124,18 +144,32 @@ func (rf *Raft) GetState() (int, bool) {
 // RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+	rf.rpcLock.Lock()
 	currentTerm := rf.getCurrentTermNumber()
-	votedFor := rf.getVotedFor()
-	if args.ReqVotesTermNumber < currentTerm || votedFor != -1 {
-		rf.logMsg("already voted for someone, so not voting for this guy!")
+	if args.ReqVotesTermNumber < currentTerm {
+		rf.logMsg(fmt.Sprintf("term number %v is lesser than currentTerm %v, so not voting for %v!", args.ReqVotesTermNumber, currentTerm, args.CandidateId))
 		reply.ReplyVotesTermNumber = currentTerm
 		reply.VoteGranted = false
-	} else {
-		rf.logMsg("voting yes!")
-		reply.ReplyVotesTermNumber = currentTerm
+		return
+	}
+	if args.ReqVotesTermNumber > currentTerm {
+		term := rf.GetNewTerm(follower, generateNewElectionTimeout())
+		rf.setTerm(term)
+		rf.logMsg("Changed my term before voting!")
+	}
+	votedFor := rf.getVotedFor()
+	if votedFor == -1 {
+		rf.logMsg(fmt.Sprintf("voting yes for %v!", args.CandidateId))
+		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
 		reply.VoteGranted = true
 		rf.setVotedFor(args.CandidateId)
+	} else {
+		rf.logMsg(fmt.Sprintf("Already voted for %v in current term, so not voting for %v", votedFor, args.CandidateId))
+		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
+		reply.VoteGranted = false
 	}
+
+	rf.rpcLock.Unlock()
 }
 
 //
