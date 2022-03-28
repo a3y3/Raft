@@ -64,9 +64,9 @@ func (rf *Raft) candidate() {
 		ReqVotesTermNumber: currentTermNumber,
 		CandidateId:        rf.me,
 	}
-	replyVotesArgs := RequestVoteReply{}
 
 	for server_idx := range rf.peers {
+		replyVotesArgs := RequestVoteReply{}
 		ok := rf.sendRequestVote(server_idx, &reqVotesArgs, &replyVotesArgs)
 		if ok {
 			voteGranted := replyVotesArgs.VoteGranted
@@ -126,10 +126,12 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	currentTerm := rf.getCurrentTermNumber()
 	votedFor := rf.getVotedFor()
-	if args.ReqVotesTermNumber < currentTerm || votedFor == -1 {
+	if args.ReqVotesTermNumber < currentTerm || votedFor != -1 {
+		rf.logMsg("already voted for someone, so not voting for this guy!")
 		reply.ReplyVotesTermNumber = currentTerm
 		reply.VoteGranted = false
 	} else {
+		rf.logMsg("voting yes!")
 		reply.ReplyVotesTermNumber = currentTerm
 		reply.VoteGranted = true
 		rf.setVotedFor(args.CandidateId)
