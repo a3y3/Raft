@@ -157,7 +157,9 @@ type AppendEntriesArgs struct {
 	LeaderId                int
 }
 
-type AppendEntriesReply struct{}
+type AppendEntriesReply struct {
+	ReplyEntriesTermNumber int
+}
 
 //
 // RequestVote RPC arguments structure.

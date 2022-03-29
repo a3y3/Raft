@@ -24,11 +24,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			term := rf.GetNewTerm(follower, generateNewElectionTimeout())
 			rf.setTerm(term)
 			rf.currentTerm.number = args.AppendEntriesTermNumber
-			rf.logMsg(fmt.Sprintf("Stepping down as leader and updating my term"))
 			go rf.follower()
 		}
 		rf.setReceivedHeartBeat(true)
 	}
+	reply.ReplyEntriesTermNumber = currentTerm
 	rf.rpcLock.Unlock()
 }
 
@@ -42,9 +42,9 @@ func (rf *Raft) leader() {
 			AppendEntriesTermNumber: rf.getCurrentTermNumber(),
 			LeaderId:                rf.me,
 		}
-		appendEntriesReply := AppendEntriesReply{}
 		rf.logMsg("Sending hb to peers")
 		for server_idx := range rf.peers {
+			appendEntriesReply := AppendEntriesReply{}
 			if server_idx != rf.me {
 				rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
 			}
@@ -75,19 +75,25 @@ func (rf *Raft) candidate() {
 			replyVotesArgs := RequestVoteReply{}
 			rf.logMsg(fmt.Sprintf("Requesting vote from %v", server_idx))
 			ok := rf.sendRequestVote(server_idx, &reqVotesArgs, &replyVotesArgs)
+			// check if this election is still valid.
+			if rf.getCurrentTermNumber() > currentTermNumber {
+				rf.logMsg("Running an expired election, cancelling it...")
+				return
+			}
 			if ok {
-				rf.logMsg(fmt.Sprintf("Got rpc reply with term %v and vote %v. currentTerm variable is %v", replyVotesArgs.ReplyVotesTermNumber, replyVotesArgs.VoteGranted, currentTermNumber))
-				if rf.getCurrentTermNumber() > currentTermNumber {
-					rf.logMsg("Running an expired election, cancelling it...")
+				rf.logMsg(fmt.Sprintf("Got rpc reply with term %v and vote %v.", replyVotesArgs.ReplyVotesTermNumber, replyVotesArgs.VoteGranted))
+				if replyVotesArgs.ReplyVotesTermNumber > rf.getCurrentTermNumber() {
+					rf.logMsg("A new term has already started! Cancelling my election.")
 					return
 				}
-				if replyVotesArgs.ReplyVotesTermNumber >= rf.getCurrentTermNumber() {
+				if replyVotesArgs.ReplyVotesTermNumber == rf.getCurrentTermNumber() {
 					voteGranted := replyVotesArgs.VoteGranted
 					if voteGranted {
 						votes++
 					}
-					if replyVotesArgs.ReplyVotesTermNumber > rf.getCurrentTermNumber() {
-						rf.logMsg("A new term has already started! Cancelling my election.")
+					if votes > len(rf.peers)/2 {
+						rf.logMsg(fmt.Sprintf("got %v out of % v votes, so elected is true\n", votes, len(rf.peers)))
+						go rf.leader()
 						return
 					}
 				}
@@ -95,19 +101,8 @@ func (rf *Raft) candidate() {
 		}
 	}
 
-	if rf.getCurrentTermNumber() > currentTermNumber {
-		rf.logMsg("Exiting expired election!")
-		return
-	}
-
-	// election went well, let's check the results
-	elected := votes > len(rf.peers)/2
-	rf.logMsg(fmt.Sprintf("got %v out of % v votes, so elected is %v\n", votes, len(rf.peers), elected))
-	if elected {
-		go rf.leader()
-	} else {
-		go rf.follower()
-	}
+	rf.logMsg(fmt.Sprintf("Stepping down to a follower, as I got %v out of % v votes\n", votes, len(rf.peers)))
+	go rf.follower()
 }
 
 // This go routine starts a new election if this peer hasn't received heartsbeats recently.
@@ -155,6 +150,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.ReqVotesTermNumber > currentTerm {
 		term := rf.GetNewTerm(follower, generateNewElectionTimeout())
 		rf.setTerm(term)
+		rf.currentTerm.number = args.ReqVotesTermNumber
 		rf.logMsg("Changed my term before voting!")
 	}
 	votedFor := rf.getVotedFor()
