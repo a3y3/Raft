@@ -42,16 +42,15 @@ func (rf *Raft) leader() {
 			AppendEntriesTermNumber: rf.getCurrentTermNumber(),
 			LeaderId:                rf.me,
 		}
-		rf.logMsg("Sending hb to peers")
 		for server_idx := range rf.peers {
 			appendEntriesReply := AppendEntriesReply{}
 			if server_idx != rf.me {
-				rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
+				go rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
 			}
 		}
-		rf.logMsg("Finished sending hb to peers")
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
 	}
+	rf.logMsg("Stepping down from being a leader")
 }
 
 func (rf *Raft) candidate() {
@@ -70,38 +69,56 @@ func (rf *Raft) candidate() {
 		CandidateId:        rf.me,
 	}
 
+	votesChan := make(chan struct {
+		RequestVoteReply
+		bool
+	})
 	for server_idx := range rf.peers {
 		if server_idx != rf.me {
-			replyVotesArgs := RequestVoteReply{}
-			rf.logMsg(fmt.Sprintf("Requesting vote from %v", server_idx))
-			ok := rf.sendRequestVote(server_idx, &reqVotesArgs, &replyVotesArgs)
-			// check if this election is still valid.
-			if rf.getCurrentTermNumber() > currentTermNumber {
-				rf.logMsg("Running an expired election, cancelling it...")
+			go func(server_idx int) {
+				replyVotesArgs := RequestVoteReply{}
+				rf.logMsg(fmt.Sprintf("Requesting vote from %v", server_idx))
+				ok := rf.sendRequestVote(server_idx, &reqVotesArgs, &replyVotesArgs)
+				votesChan <- struct {
+					RequestVoteReply
+					bool
+				}{replyVotesArgs, ok}
+			}(server_idx)
+		}
+	}
+	for pair := range votesChan {
+		// check if this election is still valid.
+		if rf.getCurrentTermNumber() > currentTermNumber {
+			rf.logMsg("Running an expired election, cancelling it...")
+			go rf.follower()
+			return
+		}
+		replyVotesArgs := pair.RequestVoteReply
+		ok := pair.bool
+
+		if ok {
+			rf.logMsg(fmt.Sprintf("Got rpc reply with term %v and vote %v.", replyVotesArgs.ReplyVotesTermNumber, replyVotesArgs.VoteGranted))
+			if replyVotesArgs.ReplyVotesTermNumber > rf.getCurrentTermNumber() {
+				rf.logMsg("A new term has already started! Cancelling my election.")
+				go rf.follower()
 				return
 			}
-			if ok {
-				rf.logMsg(fmt.Sprintf("Got rpc reply with term %v and vote %v.", replyVotesArgs.ReplyVotesTermNumber, replyVotesArgs.VoteGranted))
-				if replyVotesArgs.ReplyVotesTermNumber > rf.getCurrentTermNumber() {
-					rf.logMsg("A new term has already started! Cancelling my election.")
-					return
+			if replyVotesArgs.ReplyVotesTermNumber == rf.getCurrentTermNumber() {
+				voteGranted := replyVotesArgs.VoteGranted
+				if voteGranted {
+					votes++
 				}
-				if replyVotesArgs.ReplyVotesTermNumber == rf.getCurrentTermNumber() {
-					voteGranted := replyVotesArgs.VoteGranted
-					if voteGranted {
-						votes++
-					}
-					if votes > len(rf.peers)/2 {
-						rf.logMsg(fmt.Sprintf("got %v out of % v votes, so elected is true\n", votes, len(rf.peers)))
-						go rf.leader()
-						return
-					}
+				if votes > len(rf.peers)/2 {
+					rf.logMsg(fmt.Sprintf("got majority (%v out of % v votes) so becoming leader\n", votes, len(rf.peers)))
+					go rf.leader()
+					return
 				}
 			}
 		}
 	}
 
-	rf.logMsg(fmt.Sprintf("Stepping down to a follower, as I got %v out of % v votes\n", votes, len(rf.peers)))
+	// if we reached here, we didn't become a leader
+	rf.logMsg(fmt.Sprintf("Received %v out of %v votes, so I didn't get elected. Stepping down to a follower.", votes, len(rf.peers)))
 	go rf.follower()
 }
 
