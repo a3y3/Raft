@@ -21,7 +21,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	currentTerm := rf.getCurrentTermNumber()
 	if args.AppendEntriesTermNumber >= currentTerm {
 		if args.AppendEntriesTermNumber > currentTerm {
-			term := rf.GetNewTerm(follower, generateNewElectionTimeout())
+			term := rf.GetNewTerm(undefined, generateNewElectionTimeout())
 			rf.setTerm(term)
 			rf.currentTerm.number = args.AppendEntriesTermNumber
 			go rf.follower()

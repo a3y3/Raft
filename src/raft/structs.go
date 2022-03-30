@@ -105,7 +105,8 @@ type logEntry struct {
 type State int
 
 const (
-	follower State = iota
+	undefined State = iota
+	follower
 	candidate
 	leader
 )
