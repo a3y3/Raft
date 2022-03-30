@@ -49,13 +49,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
-	newTerm := rf.GetNewTerm(undefined, generateNewElectionTimeout())
+	newTerm := generateNewTerm(1, follower, generateNewElectionTimeout())
 	rf.setTerm(newTerm)
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
-	go rf.follower() // become a follower at the start
+	go rf.tickr()
 
 	return rf
 }

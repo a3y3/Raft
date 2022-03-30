@@ -21,10 +21,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	currentTerm := rf.getCurrentTermNumber()
 	if args.AppendEntriesTermNumber >= currentTerm {
 		if args.AppendEntriesTermNumber > currentTerm {
-			term := rf.GetNewTerm(undefined, generateNewElectionTimeout())
+			term := generateNewTerm(args.AppendEntriesTermNumber, follower, generateNewElectionTimeout())
 			rf.setTerm(term)
-			rf.currentTerm.number = args.AppendEntriesTermNumber
-			go rf.follower()
 		}
 		rf.setReceivedHeartBeat(true)
 	}
@@ -33,10 +31,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (rf *Raft) leader() {
-	if rf.killed() || rf.getCurrentState() == leader {
-		return
-	}
 	rf.setCurrentState(leader)
+	rf.logMsg("Starting my reign as a leader!")
 	for !rf.killed() && rf.getCurrentState() == leader {
 		appendEntriesArgs := AppendEntriesArgs{
 			AppendEntriesTermNumber: rf.getCurrentTermNumber(),
@@ -44,23 +40,19 @@ func (rf *Raft) leader() {
 		}
 		for server_idx := range rf.peers {
 			appendEntriesReply := AppendEntriesReply{}
-			if server_idx != rf.me {
-				go rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
-			}
+			go rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
 		}
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
+		rf.logMsg("Sent HBs")
 	}
 	rf.logMsg("Stepping down from being a leader")
 }
 
 func (rf *Raft) candidate() {
-	if rf.killed() || rf.getCurrentState() == candidate {
-		return
-	}
-	newTerm := rf.GetNewTerm(candidate, generateNewElectionTimeout())
+	newTerm := generateNewTerm(rf.getCurrentTermNumber()+1, candidate, generateNewElectionTimeout())
 	rf.setTerm(newTerm) // set this as the new term (also sets state to candidate)
 	currentTermNumber := rf.getCurrentTermNumber()
-	rf.logMsg("Started new term!")
+	rf.logMsg("Started new term as a candidate!")
 	rf.setVotedFor(rf.me) // vote for itself
 	votes := 1
 
@@ -90,7 +82,6 @@ func (rf *Raft) candidate() {
 		// check if this election is still valid.
 		if rf.getCurrentTermNumber() > currentTermNumber {
 			rf.logMsg("Running an expired election, cancelling it...")
-			go rf.follower()
 			return
 		}
 		replyVotesArgs := pair.RequestVoteReply
@@ -100,7 +91,6 @@ func (rf *Raft) candidate() {
 			rf.logMsg(fmt.Sprintf("Got rpc reply with term %v and vote %v.", replyVotesArgs.ReplyVotesTermNumber, replyVotesArgs.VoteGranted))
 			if replyVotesArgs.ReplyVotesTermNumber > rf.getCurrentTermNumber() {
 				rf.logMsg("A new term has already started! Cancelling my election.")
-				go rf.follower()
 				return
 			}
 			if replyVotesArgs.ReplyVotesTermNumber == rf.getCurrentTermNumber() {
@@ -111,24 +101,21 @@ func (rf *Raft) candidate() {
 				if votes > len(rf.peers)/2 {
 					rf.logMsg(fmt.Sprintf("got majority (%v out of % v votes) so becoming leader\n", votes, len(rf.peers)))
 					go rf.leader()
-					return
+					return // early exit this election
 				}
 			}
 		}
 	}
 
 	// if we reached here, we didn't become a leader
-	rf.logMsg(fmt.Sprintf("Received %v out of %v votes, so I didn't get elected. Stepping down to a follower.", votes, len(rf.peers)))
-	go rf.follower()
+	rf.logMsg(fmt.Sprintf("Received %v out of %v votes, so I didn't get elected.", votes, len(rf.peers)))
 }
 
-// This go routine starts a new election if this peer hasn't received heartsbeats recently.
-func (rf *Raft) follower() {
-	if rf.killed() || rf.getCurrentState() == follower { // avoid creating multiple followers on this server. That will be disastrous!
-		return
-	}
-	rf.setCurrentState(follower)
-	for !rf.killed() && rf.getCurrentState() == follower {
+// This routine runs forever.
+// If a heartbeat is not received, it changes the state to a candidate.
+// Multiple instances of it should never be started.
+func (rf *Raft) tickr() {
+	for !rf.killed() {
 		timeout := rf.getElectionTimeout()
 		rf.logMsg(fmt.Sprintf("Sleeping for %v ms", timeout))
 		time.Sleep(timeout)
@@ -139,7 +126,6 @@ func (rf *Raft) follower() {
 		} else {
 			rf.logMsg("Did not receive a heartbeat! Starting election...")
 			go rf.candidate()
-			return
 		}
 	}
 }
@@ -165,9 +151,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 	if args.ReqVotesTermNumber > currentTerm {
-		term := rf.GetNewTerm(follower, generateNewElectionTimeout())
+		term := generateNewTerm(args.ReqVotesTermNumber, follower, generateNewElectionTimeout())
 		rf.setTerm(term)
-		rf.currentTerm.number = args.ReqVotesTermNumber
 		rf.logMsg("Changed my term before voting!")
 	}
 	votedFor := rf.getVotedFor()

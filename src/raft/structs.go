@@ -89,12 +89,12 @@ func (rf *Raft) setTerm(term Term) {
 	rf.currentTerm = term
 }
 
-func (rf *Raft) GetNewTerm(newState State, electionTimeout time.Duration) Term {
+func generateNewTerm(number int, state State, electionTimeout time.Duration) Term {
 	return Term{
-		number:          rf.getCurrentTermNumber() + 1,
+		number:          number,
 		votedFor:        -1,
 		electionTimeout: electionTimeout,
-		state:           newState,
+		state:           state,
 	}
 }
 
@@ -105,8 +105,7 @@ type logEntry struct {
 type State int
 
 const (
-	undefined State = iota
-	follower
+	follower State = iota
 	candidate
 	leader
 )
