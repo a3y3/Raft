@@ -79,7 +79,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
-	newTerm := generateNewTerm(1, follower, generateNewElectionTimeout())
+	rf.applyCh = applyCh
+	newTerm := generateNewTerm(0, follower, generateNewElectionTimeout())
 	rf.setTerm(newTerm)
 
 	// initialize from state persisted before a crash

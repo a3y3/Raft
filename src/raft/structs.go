@@ -20,6 +20,13 @@ type Raft struct {
 	currentTerm       Term                // current Term of the Raft peer.
 	logEntries        []logEntry
 	receivedHeartbeat bool
+	applyCh           chan ApplyMsg
+}
+
+func (rf *Raft) setLeaderId(leaderId int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.currentTerm.leaderId = leaderId
 }
 
 func (rf *Raft) getVotedFor() int {
@@ -30,8 +37,14 @@ func (rf *Raft) getVotedFor() int {
 
 func (rf *Raft) setVotedFor(index int) {
 	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	rf.currentTerm.votedFor = index
+	if rf.currentTerm.votedFor == -1 {
+		rf.currentTerm.votedFor = index
+		rf.mu.Unlock()
+	} else {
+		rf.mu.Unlock() // this is bad code/bad practice but as long as this is the only instance of it, it's okay.
+		// This lock needs to be locked/unlocked in this weird manner because rf.logMsg will try to acquire a lock too, and we don't want it to deadlock.
+		rf.logMsg("Warning: Avoided a rare condition in which a server could vote for 2 different servers in the same term.", VOTE)
+	}
 }
 
 func (rf *Raft) getCurrentTermNumber() int {
@@ -81,6 +94,7 @@ type Term struct {
 	votedFor        int           // candidateId that this server voted for in this term
 	electionTimeout time.Duration // the timeout for this term. Reset every election term.
 	state           State         // state enum {follower/candidate/leader} the server was in for this term.
+	leaderId        int           // id of the leader for this term.
 }
 
 func (rf *Raft) setTerm(term Term) {
