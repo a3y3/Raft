@@ -2,7 +2,10 @@ package raft
 
 import (
 	"log"
+	"os"
+	"strconv"
 	"sync/atomic"
+	"time"
 
 	"6.824/labrpc"
 )
@@ -28,8 +31,35 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-func (rf *Raft) logMsg(msg string) {
-	log.Printf("[%v]--[term %v]--[node %v]: %v\n", rf.getCurrentState(), rf.getCurrentTermNumber(), rf.me, msg)
+func getVerbosity() int {
+	v := os.Getenv("VERBOSE")
+	level := 0
+	if v != "" {
+		var err error
+		level, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatalf("Invalid verbosity %v", v)
+		}
+	}
+	return level
+}
+
+var debugStart time.Time
+var debugVerbosity int
+
+func init() {
+	debugVerbosity = getVerbosity()
+	debugStart = time.Now()
+
+	log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime))
+}
+
+func (rf *Raft) logMsg(msg string, topic Topic) {
+	if debugVerbosity >= 1 {
+		time := time.Since(debugStart).Microseconds()
+		time /= 100
+		log.Printf("%06d %v %v T%v S%v %v\n", time, topic, rf.getCurrentState(), rf.getCurrentTermNumber(), rf.me, msg)
+	}
 }
 
 //

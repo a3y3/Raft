@@ -18,6 +18,8 @@ func generateNewElectionTimeout() time.Duration {
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.rpcLock.Lock()
+	defer rf.rpcLock.Unlock()
+
 	currentTerm := rf.getCurrentTermNumber()
 	if args.AppendEntriesTermNumber >= currentTerm {
 		if args.AppendEntriesTermNumber > currentTerm {
@@ -27,12 +29,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.setReceivedHeartBeat(true)
 	}
 	reply.ReplyEntriesTermNumber = currentTerm
-	rf.rpcLock.Unlock()
 }
 
 func (rf *Raft) leader() {
 	rf.setCurrentState(leader)
-	rf.logMsg("Starting my reign as a leader!")
+	rf.logMsg("Starting my reign as a leader!", LEAD)
 	for !rf.killed() && rf.getCurrentState() == leader {
 		appendEntriesArgs := AppendEntriesArgs{
 			AppendEntriesTermNumber: rf.getCurrentTermNumber(),
@@ -43,16 +44,16 @@ func (rf *Raft) leader() {
 			go rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
 		}
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
-		rf.logMsg("Sent HBs")
+		rf.logMsg("Sent HBs", LEAD)
 	}
-	rf.logMsg("Stepping down from being a leader")
+	rf.logMsg("Stepping down from being a leader", LEAD)
 }
 
 func (rf *Raft) candidate() {
 	newTerm := generateNewTerm(rf.getCurrentTermNumber()+1, candidate, generateNewElectionTimeout())
 	rf.setTerm(newTerm) // set this as the new term (also sets state to candidate)
 	currentTermNumber := rf.getCurrentTermNumber()
-	rf.logMsg("Started new term as a candidate!")
+	rf.logMsg("Started new term as a candidate!", ELCTN)
 	rf.setVotedFor(rf.me) // vote for itself
 	votes := 1
 
@@ -69,7 +70,7 @@ func (rf *Raft) candidate() {
 		if server_idx != rf.me {
 			go func(server_idx int) {
 				replyVotesArgs := RequestVoteReply{}
-				rf.logMsg(fmt.Sprintf("Requesting vote from %v", server_idx))
+				rf.logMsg(fmt.Sprintf("Requesting vote from %v", server_idx), ELCTN)
 				ok := rf.sendRequestVote(server_idx, &reqVotesArgs, &replyVotesArgs)
 				votesChan <- struct {
 					RequestVoteReply
@@ -81,16 +82,16 @@ func (rf *Raft) candidate() {
 	for pair := range votesChan {
 		// check if this election is still valid.
 		if rf.getCurrentTermNumber() > currentTermNumber {
-			rf.logMsg("Running an expired election, cancelling it...")
+			rf.logMsg("Running an expired election, cancelling it...", ELCTN)
 			return
 		}
 		replyVotesArgs := pair.RequestVoteReply
 		ok := pair.bool
 
 		if ok {
-			rf.logMsg(fmt.Sprintf("Got rpc reply with term %v and vote %v.", replyVotesArgs.ReplyVotesTermNumber, replyVotesArgs.VoteGranted))
+			rf.logMsg(fmt.Sprintf("Got rpc reply with term %v and vote %v.", replyVotesArgs.ReplyVotesTermNumber, replyVotesArgs.VoteGranted), ELCTN)
 			if replyVotesArgs.ReplyVotesTermNumber > rf.getCurrentTermNumber() {
-				rf.logMsg("A new term has already started! Cancelling my election.")
+				rf.logMsg("A new term has already started! Cancelling my election.", ELCTN)
 				return
 			}
 			if replyVotesArgs.ReplyVotesTermNumber == rf.getCurrentTermNumber() {
@@ -99,7 +100,7 @@ func (rf *Raft) candidate() {
 					votes++
 				}
 				if votes > len(rf.peers)/2 {
-					rf.logMsg(fmt.Sprintf("got majority (%v out of % v votes) so becoming leader\n", votes, len(rf.peers)))
+					rf.logMsg(fmt.Sprintf("got majority (%v out of % v votes) so becoming leader\n", votes, len(rf.peers)), ELCTN)
 					go rf.leader()
 					return // early exit this election
 				}
@@ -108,7 +109,7 @@ func (rf *Raft) candidate() {
 	}
 
 	// if we reached here, we didn't become a leader
-	rf.logMsg(fmt.Sprintf("Received %v out of %v votes, so I didn't get elected.", votes, len(rf.peers)))
+	rf.logMsg(fmt.Sprintf("Received %v out of %v votes, so I didn't get elected.", votes, len(rf.peers)), ELCTN)
 }
 
 // This routine runs forever.
@@ -117,14 +118,14 @@ func (rf *Raft) candidate() {
 func (rf *Raft) tickr() {
 	for !rf.killed() {
 		timeout := rf.getElectionTimeout()
-		rf.logMsg(fmt.Sprintf("Sleeping for %v ms", timeout))
+		rf.logMsg(fmt.Sprintf("Sleeping for %v ms", timeout), TIMER)
 		time.Sleep(timeout)
 
 		recvdHb := rf.getReceivedHeartBeat()
 		if recvdHb {
 			rf.setReceivedHeartBeat(false)
 		} else {
-			rf.logMsg("Did not receive a heartbeat! Starting election...")
+			rf.logMsg("Did not receive a heartbeat! Starting election...", TIMER)
 			go rf.candidate()
 		}
 	}
@@ -143,9 +144,11 @@ func (rf *Raft) GetState() (int, bool) {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.rpcLock.Lock()
+	defer rf.rpcLock.Unlock()
+
 	currentTerm := rf.getCurrentTermNumber()
 	if args.ReqVotesTermNumber < currentTerm {
-		rf.logMsg(fmt.Sprintf("term number %v is lesser than currentTerm %v, so not voting for %v!", args.ReqVotesTermNumber, currentTerm, args.CandidateId))
+		rf.logMsg(fmt.Sprintf("term number %v is lesser than currentTerm %v, so not voting for %v!", args.ReqVotesTermNumber, currentTerm, args.CandidateId), VOTE)
 		reply.ReplyVotesTermNumber = currentTerm
 		reply.VoteGranted = false
 		return
@@ -153,21 +156,19 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.ReqVotesTermNumber > currentTerm {
 		term := generateNewTerm(args.ReqVotesTermNumber, follower, generateNewElectionTimeout())
 		rf.setTerm(term)
-		rf.logMsg("Changed my term before voting!")
+		rf.logMsg("Changed my term before voting!", VOTE)
 	}
 	votedFor := rf.getVotedFor()
 	if votedFor == -1 {
-		rf.logMsg(fmt.Sprintf("voting yes for %v!", args.CandidateId))
+		rf.logMsg(fmt.Sprintf("voting yes for %v!", args.CandidateId), VOTE)
 		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
 		reply.VoteGranted = true
 		rf.setVotedFor(args.CandidateId)
 	} else {
-		rf.logMsg(fmt.Sprintf("Already voted for %v in current term, so not voting for %v", votedFor, args.CandidateId))
+		rf.logMsg(fmt.Sprintf("Already voted for %v in current term, so not voting for %v", votedFor, args.CandidateId), VOTE)
 		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
 		reply.VoteGranted = false
 	}
-
-	rf.rpcLock.Unlock()
 }
 
 //

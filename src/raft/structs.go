@@ -110,6 +110,15 @@ const (
 	leader
 )
 
+type Topic string
+
+const (
+	TIMER Topic = "TIMER"
+	VOTE  Topic = "VOTE"
+	ELCTN Topic = "ELCTN"
+	LEAD  Topic = "LEAD"
+)
+
 func (s State) String() string {
 	switch s {
 	case follower:
