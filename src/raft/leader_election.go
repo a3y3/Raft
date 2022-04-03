@@ -164,6 +164,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
 		reply.VoteGranted = true
 		rf.setVotedFor(args.CandidateId)
+		rf.receivedHeartbeat = true // when we vote yes, give the server some time to send HBs.
 	} else {
 		rf.logMsg(fmt.Sprintf("Already voted for %v in current term, so not voting for %v", votedFor, args.CandidateId), VOTE)
 		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
