@@ -18,9 +18,50 @@ type Raft struct {
 	me                int                 // this peer's index into peers[]
 	dead              int32               // set by Kill()
 	currentTerm       Term                // current Term of the Raft peer.
-	logEntries        []logEntry
 	receivedHeartbeat bool
 	applyCh           chan ApplyMsg
+	logEntries        []LogEntry
+	commitIndex       int // index of highest logEntry known to be commited
+	lastApplied       int // index of highest logEntry applied to state machine
+
+	nextIndex  []int // leader only - index of next entry for each follower
+	matchIndex []int // leader only - index of highest entry known to be replicated for each follower
+}
+
+func (rf *Raft) getCommitIndex() int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.commitIndex
+}
+
+func (rf *Raft) getLogLength() int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return len(rf.logEntries)
+}
+
+func (rf *Raft) getLogEntries() []LogEntry {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.logEntries
+}
+
+func (rf *Raft) decrementNextIndexFor(server int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.nextIndex[server]--
+}
+
+func (rf *Raft) setNextIndexFor(server int, index int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.nextIndex[server] = index
+}
+
+func (rf *Raft) getNextIndexFor(server int) int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.nextIndex[server]
 }
 
 func (rf *Raft) setLeaderId(leaderId int) {
@@ -37,13 +78,12 @@ func (rf *Raft) getVotedFor() int {
 
 func (rf *Raft) setVotedFor(index int) {
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	if rf.currentTerm.votedFor == -1 {
 		rf.currentTerm.votedFor = index
-		rf.mu.Unlock()
 	} else {
-		rf.mu.Unlock() // this is bad code/bad practice but as long as this is the only instance of it, it's okay.
-		// This lock needs to be locked/unlocked in this weird manner because rf.logMsg will try to acquire a lock too, and we don't want it to deadlock.
-		rf.logMsg("Warning: Avoided a rare condition in which a server could vote for 2 different servers in the same term.", VOTE)
+		// logMsg needs to be on a separate thread as logMsg acquires mu lock (which this thread already has). This is not ideal, but as this is the only instance of it (and it's an extremely rare case), it's okay.
+		go rf.logMsg("Warning: Avoided a rare condition in which a server could vote for 2 different servers in the same term.", VOTE)
 	}
 }
 
@@ -112,8 +152,9 @@ func generateNewTerm(number int, state State, electionTimeout time.Duration) Ter
 	}
 }
 
-type logEntry struct {
-	log string // log message
+type LogEntry struct {
+	command interface{} // command for the state machine
+	term    int         // term when entry was first received by leader
 }
 
 type State int
@@ -178,10 +219,17 @@ type ApplyMsg struct {
 type AppendEntriesArgs struct {
 	AppendEntriesTermNumber int
 	LeaderId                int
+	PrevLogIndex            int
+	PrevLogTerm             int
+	Entries                 []LogEntry
+	LeaderCommit            int
 }
 
 type AppendEntriesReply struct {
 	ReplyEntriesTermNumber int
+	Success                bool
+	Id                     int
+	LogLength              int
 }
 
 //

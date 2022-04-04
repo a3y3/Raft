@@ -1,5 +1,52 @@
 package raft
 
+func (rf *Raft) tryAppendEntry(command interface{}) {
+	rf.mu.Lock()
+	logEntry := LogEntry{
+		command: command,
+		term:    rf.currentTerm.number,
+	}
+	rf.logEntries = append(rf.logEntries, logEntry)
+	rf.mu.Unlock()
+
+	rf.sendLogfEntries()
+}
+
+func (rf *Raft) sendLogfEntries() {
+	logEntries := rf.getLogEntries()
+	currentTerm := rf.getCurrentTermNumber()
+	commitIndex := rf.getCommitIndex()
+	for server_idx := range rf.peers {
+		if server_idx != rf.me {
+			nextIndex := rf.getNextIndexFor(server_idx)
+			prevIndex := nextIndex - 1
+			prevTerm := 0
+			if prevIndex != -1 {
+				prevTerm = logEntries[prevIndex].term
+			}
+			appendEntriesArgs := AppendEntriesArgs{
+				AppendEntriesTermNumber: currentTerm,
+				LeaderId:                rf.me,
+				PrevLogIndex:            prevIndex,
+				PrevLogTerm:             prevTerm,
+				Entries:                 logEntries[nextIndex:],
+				LeaderCommit:            commitIndex,
+			}
+			appendEntriesReply := AppendEntriesReply{}
+			go func(server_idx int, appendEntriesArgs AppendEntriesArgs, appendEntriesReply AppendEntriesReply) {
+				ok := false
+				for !rf.killed() && !ok {
+					ok = rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
+				}
+			}(server_idx, appendEntriesArgs, appendEntriesReply)
+		}
+	}
+}
+
+func (rf *Raft) handleAppendEntriesReply(appendEntriesReply AppendEntriesReply) {
+
+}
+
 //
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
@@ -14,12 +61,18 @@ package raft
 // term. the third return value is true if this server believes it is
 // the leader.
 //
-func (rp *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := true
+func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
-	// Your code here (2B).
+	if rf.getCurrentState() != leader {
+		return -1, -1, false
+	}
 
-	return index, term, isLeader
+	rf.mu.Lock()
+	index := len(rf.logEntries)
+	currentTerm := rf.currentTerm.number
+	rf.mu.Unlock()
+
+	go rf.tryAppendEntry(command)
+
+	return index, currentTerm, true
 }

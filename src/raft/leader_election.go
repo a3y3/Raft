@@ -28,26 +28,63 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			term := generateNewTerm(args.AppendEntriesTermNumber, follower, generateNewElectionTimeout())
 			rf.setTerm(term)
 		}
+	} else {
+		*reply = AppendEntriesReply{
+			ReplyEntriesTermNumber: currentTerm,
+			Success:                false,
+			Id:                     rf.me,
+			LogLength:              rf.getLogLength(),
+		}
 	}
-	reply.ReplyEntriesTermNumber = currentTerm
 }
 
 func (rf *Raft) leader() {
 	rf.setCurrentState(leader)
 	rf.logMsg("Starting my reign as a leader!", LEAD)
+	currentTerm := rf.getCurrentTermNumber()
 	for !rf.killed() && rf.getCurrentState() == leader {
-		appendEntriesArgs := AppendEntriesArgs{
-			AppendEntriesTermNumber: rf.getCurrentTermNumber(),
-			LeaderId:                rf.me,
-		}
+		logEntries := rf.getLogEntries()
+		commitIndex := rf.getCommitIndex()
 		for server_idx := range rf.peers {
+			nextIndex := rf.getNextIndexFor(server_idx)
+			prevIndex := nextIndex - 1
+			prevTerm := 0
+			if prevIndex != -1 {
+				prevTerm = logEntries[prevIndex].term
+			}
+			appendEntriesArgs := AppendEntriesArgs{
+				AppendEntriesTermNumber: currentTerm,
+				LeaderId:                rf.me,
+				PrevLogIndex:            prevIndex,
+				PrevLogTerm:             prevTerm,
+				Entries:                 logEntries[nextIndex:],
+				LeaderCommit:            commitIndex,
+			}
 			appendEntriesReply := AppendEntriesReply{}
-			go rf.sendAppendEntries(server_idx, &appendEntriesArgs, &appendEntriesReply)
+			go rf.sendLogEntries(server_idx, appendEntriesArgs, appendEntriesReply)
 		}
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
 		rf.logMsg("Sent HBs", LEAD)
 	}
 	rf.logMsg("Stepping down from being a leader", LEAD)
+}
+
+func (rf *Raft) sendLogEntries(server_idx int, args AppendEntriesArgs, reply AppendEntriesReply) {
+	ok := false
+	for !ok && !rf.killed() && rf.getCurrentState() == leader {
+		ok = rf.sendAppendEntries(server_idx, &args, &reply)
+		if ok {
+			if reply.ReplyEntriesTermNumber > rf.getCurrentTermNumber() {
+				rf.setCurrentState(follower)
+				return
+			}
+			if reply.Success {
+				rf.setNextIndexFor(reply.Id, reply.LogLength)
+			} else {
+				rf.decrementNextIndexFor(reply.Id)
+			}
+		}
+	}
 }
 
 func (rf *Raft) candidate() {
