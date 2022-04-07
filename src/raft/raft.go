@@ -79,6 +79,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	rf.nextIndex = make([]int, len(rf.peers))
 	rf.applyCh = applyCh
 	newTerm := generateNewTerm(0, follower, generateNewElectionTimeout())
 	rf.setTerm(newTerm)

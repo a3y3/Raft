@@ -3,8 +3,8 @@ package raft
 func (rf *Raft) tryAppendEntry(command interface{}) {
 	rf.mu.Lock()
 	logEntry := LogEntry{
-		command: command,
-		term:    rf.currentTerm.number,
+		Command: command,
+		Term:    rf.currentTerm.number,
 	}
 	rf.logEntries = append(rf.logEntries, logEntry)
 	rf.mu.Unlock()
@@ -22,7 +22,7 @@ func (rf *Raft) sendLogfEntries() {
 			prevIndex := nextIndex - 1
 			prevTerm := 0
 			if prevIndex != -1 {
-				prevTerm = logEntries[prevIndex].term
+				prevTerm = logEntries[prevIndex].Term
 			}
 			appendEntriesArgs := AppendEntriesArgs{
 				AppendEntriesTermNumber: currentTerm,

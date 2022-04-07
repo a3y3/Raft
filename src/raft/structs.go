@@ -28,6 +28,20 @@ type Raft struct {
 	matchIndex []int // leader only - index of highest entry known to be replicated for each follower
 }
 
+func (rf *Raft) initNextIndex() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	for i := range rf.peers {
+		rf.nextIndex[i] = len(rf.logEntries)
+	}
+}
+
+func (rf *Raft) setCommitIndex(commitIndex int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.commitIndex = commitIndex
+}
+
 func (rf *Raft) getCommitIndex() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -49,7 +63,7 @@ func (rf *Raft) getLogEntries() []LogEntry {
 func (rf *Raft) decrementNextIndexFor(server int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.nextIndex[server]--
+	rf.nextIndex[server] = max(0, rf.nextIndex[server]-1)
 }
 
 func (rf *Raft) setNextIndexFor(server int, index int) {
@@ -153,8 +167,8 @@ func generateNewTerm(number int, state State, electionTimeout time.Duration) Ter
 }
 
 type LogEntry struct {
-	command interface{} // command for the state machine
-	term    int         // term when entry was first received by leader
+	Command interface{} // command for the state machine
+	Term    int         // term when entry was first received by leader
 }
 
 type State int
@@ -247,4 +261,18 @@ type RequestVoteArgs struct {
 type RequestVoteReply struct {
 	ReplyVotesTermNumber int
 	VoteGranted          bool
+}
+
+func min(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

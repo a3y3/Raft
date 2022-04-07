@@ -21,6 +21,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.rpcLock.Unlock()
 
 	currentTerm := rf.getCurrentTermNumber()
+	success := false
+
 	if args.AppendEntriesTermNumber >= currentTerm {
 		rf.setReceivedHeartBeat(true)
 		rf.setLeaderId(args.LeaderId)
@@ -28,18 +30,57 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			term := generateNewTerm(args.AppendEntriesTermNumber, follower, generateNewElectionTimeout())
 			rf.setTerm(term)
 		}
-	} else {
-		*reply = AppendEntriesReply{
-			ReplyEntriesTermNumber: currentTerm,
-			Success:                false,
-			Id:                     rf.me,
-			LogLength:              rf.getLogLength(),
+		prevIndex := args.PrevLogIndex
+		logEntries := rf.getLogEntries()
+
+		if prevIndex == -1 {
+			// upsert without comparing
+			rf.upsertLogs(0, args.Entries)
+			success = true
+		} else {
+			// first check if prevIndex is valid
+			if prevIndex >= len(logEntries) {
+				success = false
+			} else {
+				// finally, we can compare the terms of the 2 prev indices
+				if logEntries[prevIndex].Term != args.PrevLogIndex {
+					success = false
+				} else {
+					rf.upsertLogs(prevIndex+1, args.Entries)
+					success = true
+				}
+			}
+		}
+
+		if args.LeaderCommit > rf.getCommitIndex() {
+			rf.setCommitIndex(min(args.LeaderCommit, rf.getLogLength()-1))
 		}
 	}
+
+	*reply = AppendEntriesReply{
+		ReplyEntriesTermNumber: currentTerm,
+		Success:                success,
+		Id:                     rf.me,
+		LogLength:              rf.getLogLength(),
+	}
+}
+
+func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
+	rf.mu.Lock()
+	for _, logEntry := range leaderLogs {
+		if startingIndex >= len(rf.logEntries) {
+			rf.logEntries = append(rf.logEntries, logEntry)
+		} else {
+			rf.logEntries[startingIndex] = logEntry
+		}
+		startingIndex++
+	}
+	defer rf.mu.Unlock()
 }
 
 func (rf *Raft) leader() {
 	rf.setCurrentState(leader)
+	rf.initNextIndex()
 	rf.logMsg("Starting my reign as a leader!", LEAD)
 	currentTerm := rf.getCurrentTermNumber()
 	for !rf.killed() && rf.getCurrentState() == leader {
@@ -50,7 +91,7 @@ func (rf *Raft) leader() {
 			prevIndex := nextIndex - 1
 			prevTerm := 0
 			if prevIndex != -1 {
-				prevTerm = logEntries[prevIndex].term
+				prevTerm = logEntries[prevIndex].Term
 			}
 			appendEntriesArgs := AppendEntriesArgs{
 				AppendEntriesTermNumber: currentTerm,
