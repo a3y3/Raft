@@ -80,6 +80,12 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.nextIndex = make([]int, len(rf.peers))
+	rf.matchIndex = make([]int, len(rf.peers))
+	for i := 0; i < len(rf.matchIndex); i++ {
+		rf.matchIndex[i] = -1
+	}
+	rf.commitIndex = -1
+	rf.lastApplied = -1
 	rf.applyCh = applyCh
 	newTerm := generateNewTerm(0, follower, generateNewElectionTimeout())
 	rf.setTerm(newTerm)

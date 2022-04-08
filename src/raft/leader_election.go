@@ -22,9 +22,13 @@ func (rf *Raft) leader() {
 	rf.logMsg(LEAD, "Starting my reign as a leader!")
 	currentTerm := rf.getCurrentTermNumber()
 	for !rf.killed() && rf.getCurrentState() == leader {
+		rf.setReceivedHeartBeat(true)
+		rf.logMsg(LEAD, "Sending HBs")
 		logEntries := rf.getLogEntries()
 		for server_idx := range rf.peers {
-			go rf.sendLogEntries(server_idx, currentTerm, logEntries)
+			if server_idx != rf.me {
+				go rf.sendLogEntries(server_idx, currentTerm, logEntries)
+			}
 		}
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
 		rf.logMsg(LEAD, "Sent HBs")

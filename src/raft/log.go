@@ -124,7 +124,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int, logEntries []Log
 		}
 	}
 
-	for N := rf.commitIndex + 1; N < maxIndex; N++ {
+	for N := rf.commitIndex + 1; N <= maxIndex; N++ {
 		numServers := 0
 		for _, matchIndex := range rf.matchIndex {
 			if matchIndex >= N {
