@@ -54,7 +54,7 @@ func init() {
 	log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime))
 }
 
-func (rf *Raft) logMsg(msg string, topic Topic) {
+func (rf *Raft) logMsg(topic Topic, msg string) {
 	if debugVerbosity >= 1 {
 		time := time.Since(debugStart).Microseconds()
 		time /= 100

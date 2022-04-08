@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -28,6 +29,28 @@ type Raft struct {
 	matchIndex []int // leader only - index of highest entry known to be replicated for each follower
 }
 
+func (rf *Raft) setMatchIndexFor(server int, index int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.matchIndex[server] = index
+}
+
+func (rf *Raft) getLastApplied() int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.lastApplied
+}
+
+func (rf *Raft) trimLogEntries(endIndex int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.logEntries = rf.logEntries[:endIndex+1]
+}
+
+func (logEntry LogEntry) String() string {
+	return fmt.Sprintf("(%v);", logEntry.Term)
+}
+
 func (rf *Raft) initNextIndex() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -40,6 +63,16 @@ func (rf *Raft) setCommitIndex(commitIndex int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	rf.commitIndex = commitIndex
+	for rf.commitIndex > rf.lastApplied {
+		go rf.logMsg(APPLOGREQ, fmt.Sprintf("CommitIndex %v is higher than lastApplied %v, incrementing lastApplied by 1!", rf.commitIndex, rf.lastApplied))
+		rf.lastApplied += 1
+		applyMsg := ApplyMsg{
+			CommandValid: true,
+			Command:      rf.logEntries[rf.lastApplied].Command,
+			CommandIndex: rf.lastApplied,
+		}
+		rf.applyCh <- applyMsg
+	}
 }
 
 func (rf *Raft) getCommitIndex() int {
@@ -97,7 +130,7 @@ func (rf *Raft) setVotedFor(index int) {
 		rf.currentTerm.votedFor = index
 	} else {
 		// logMsg needs to be on a separate thread as logMsg acquires mu lock (which this thread already has). This is not ideal, but as this is the only instance of it (and it's an extremely rare case), it's okay.
-		go rf.logMsg("Warning: Avoided a rare condition in which a server could vote for 2 different servers in the same term.", VOTE)
+		go rf.logMsg(VOTE, "Warning: Avoided a rare condition in which a server could vote for 2 different servers in the same term.")
 	}
 }
 
@@ -182,10 +215,15 @@ const (
 type Topic string
 
 const (
-	TIMER Topic = "TIMER"
-	VOTE  Topic = "VOTE"
-	ELCTN Topic = "ELCTN"
-	LEAD  Topic = "LEAD"
+	TIMER    Topic = "TIMER"
+	VOTE     Topic = "VOTE"
+	LEAD     Topic = "LEAD"
+	ELECTION Topic = "ELCTION"
+
+	LOGENTRIES Topic = "LOGSTATUS"
+	APPLOGREPL Topic = "APPLOGREPL"
+	APPLOGREQ  Topic = "APPLOGREQ"
+	UPSERTLOG  Topic = "UPSERTLOG"
 )
 
 func (s State) String() string {

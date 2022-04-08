@@ -1,21 +1,24 @@
 #!/usr/bin/env python
 import sys
-import shutil
-from typing import Optional, List, Tuple, Dict
+from typing import Optional
 
 import typer
 from rich import print
 from rich.columns import Columns
 from rich.console import Console
-from rich.traceback import install
 
 # fmt: off
 # Mapping from topics to colors
 TOPICS = {
-    "TIMR": "#9a9a99",
+    "TIMER": "#9a9a99",
     "VOTE": "#67a0b2",
     "LEAD": "#d0b343",
     "ELCTN": "#70c43f",
+
+    "LOGENTRIES": "#98719f",
+    "APPLOGREPL": "#d08341",
+    "APPLOGREQ": "#FD971F",
+    "UPSERTLOG": "#ff615c",
 }
 # fmt: on
 
@@ -54,7 +57,7 @@ def main(
     panic = False
     for line in input_:
         try:
-            time, topic, state, term, i, *msg = line.strip().split(" ")
+            time, topic, state, term, node, *msg = line.strip().split(" ")
             # To ignore some topics
             if topic not in topics:
                 continue
@@ -65,7 +68,7 @@ def main(
             # any particular peer. Otherwise we can treat second column
             # as peer id
             if topic != "TEST":
-                i = int(i[1:])
+                i = int(node[1:])
 
             # Colorize output by using rich syntax when needed
             if colorize and topic in TOPICS:
@@ -74,7 +77,8 @@ def main(
 
             # Single column printing. Always the case for debug stmts in tests
             if n_columns is None or topic == "TEST":
-                print(time, msg)
+                log_msg = f"[{color}]{time} {topic} {state} {term} {node} {msg}[/{color}]"
+                print(log_msg)
             # Multi column printing, timing is dropped to maximize horizontal
             # space. Heavylifting is done through rich.column.Columns object
             else:
