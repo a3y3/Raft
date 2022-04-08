@@ -43,10 +43,6 @@ func (rf *Raft) sendLogfEntries() {
 	}
 }
 
-func (rf *Raft) handleAppendEntriesReply(appendEntriesReply AppendEntriesReply) {
-
-}
-
 //
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this

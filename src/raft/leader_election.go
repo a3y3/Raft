@@ -67,6 +67,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	for _, logEntry := range leaderLogs {
 		if startingIndex >= len(rf.logEntries) {
 			rf.logEntries = append(rf.logEntries, logEntry)
@@ -75,7 +77,6 @@ func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 		}
 		startingIndex++
 	}
-	defer rf.mu.Unlock()
 }
 
 func (rf *Raft) leader() {

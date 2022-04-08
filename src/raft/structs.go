@@ -57,7 +57,7 @@ func (rf *Raft) getLogLength() int {
 func (rf *Raft) getLogEntries() []LogEntry {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return rf.logEntries
+	return append([]LogEntry{}, rf.logEntries...) // create a copy to avoid race
 }
 
 func (rf *Raft) decrementNextIndexFor(server int) {
