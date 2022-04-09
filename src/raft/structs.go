@@ -69,7 +69,7 @@ func (rf *Raft) setCommitIndex(commitIndex int) {
 		applyMsg := ApplyMsg{
 			CommandValid: true,
 			Command:      rf.logEntries[rf.lastApplied].Command,
-			CommandIndex: rf.lastApplied,
+			CommandIndex: rf.lastApplied + 1, // the tests assume logs are 1-indexed
 		}
 		rf.applyCh <- applyMsg
 	}

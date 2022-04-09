@@ -171,5 +171,5 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Unlock()
 	rf.logMsg(LOGENTRIES, fmt.Sprintf("Appended new entry to self. New logEntries is %v", rf.getLogEntries()))
 
-	return index, currentTerm, true
+	return index + 1, currentTerm, true // the tests assume logs are 1-indexed
 }
