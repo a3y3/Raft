@@ -42,7 +42,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 		}
 
-		if args.LeaderCommit > rf.getCommitIndex() {
+		if success && args.LeaderCommit > rf.getCommitIndex() {
 			newCommitIndex := min(args.LeaderCommit, rf.getLogLength()-1)
 			rf.logMsg(APPLOGREQ, fmt.Sprintf("Updating commitIndex to %v", newCommitIndex))
 			rf.setCommitIndex(newCommitIndex)
