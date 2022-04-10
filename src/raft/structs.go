@@ -44,11 +44,11 @@ func (rf *Raft) getLastApplied() int {
 func (rf *Raft) trimLogEntries(endIndex int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.logEntries = rf.logEntries[:endIndex+1]
+	rf.logEntries = rf.logEntries[:endIndex]
 }
 
 func (logEntry LogEntry) String() string {
-	return fmt.Sprintf("(%v);", logEntry.Term)
+	return fmt.Sprintf("(%v %v);", logEntry.Term, logEntry.Command)
 }
 
 func (rf *Raft) initNextIndex() {
@@ -290,6 +290,9 @@ type AppendEntriesReply struct {
 type RequestVoteArgs struct {
 	ReqVotesTermNumber int
 	CandidateId        int
+
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 //

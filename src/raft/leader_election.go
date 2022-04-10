@@ -44,10 +44,18 @@ func (rf *Raft) candidate() {
 	rf.logMsg(ELECTION, "Started new term as a candidate!")
 	rf.setVotedFor(rf.me) // vote for itself
 	votes := 1
+	logEntries := rf.getLogEntries()
+	lastLogIndex := len(logEntries) - 1
+	lastLogTerm := -1
+	if lastLogIndex != -1 {
+		lastLogTerm = logEntries[lastLogIndex].Term
+	}
 
 	reqVotesArgs := RequestVoteArgs{
 		ReqVotesTermNumber: currentTermNumber,
 		CandidateId:        rf.me,
+		LastLogIndex:       lastLogIndex,
+		LastLogTerm:        lastLogTerm,
 	}
 
 	votesChan := make(chan struct {
@@ -147,17 +155,39 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.logMsg(VOTE, "Changed my term before voting!")
 	}
 	votedFor := rf.getVotedFor()
-	if votedFor == -1 {
+	if votedFor == -1 && rf.logIsUpToDate(args.LastLogIndex, args.LastLogTerm) {
 		rf.logMsg(VOTE, fmt.Sprintf("voting yes for %v!", args.CandidateId))
 		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
 		reply.VoteGranted = true
 		rf.setVotedFor(args.CandidateId)
 		rf.setReceivedHeartBeat(true) // when we vote yes, give the server some time to send HBs.
 	} else {
-		rf.logMsg(VOTE, fmt.Sprintf("Already voted for %v in current term, so not voting for %v", votedFor, args.CandidateId))
+		if votedFor != -1 {
+			rf.logMsg(VOTE, fmt.Sprintf("Already voted for %v in current term, so not voting for %v", votedFor, args.CandidateId))
+		} else {
+			rf.logMsg(VOTE, fmt.Sprintf("Candidate's log isn't up to date as mine, so voting no"))
+		}
 		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
 		reply.VoteGranted = false
 	}
+}
+
+// returns true if the candidate's logs is atleast as up to date as this server's logs
+func (rf *Raft) logIsUpToDate(candidateLastIndex int, candidateLastTerm int) bool {
+	myEntries := rf.getLogEntries()
+	myLastIndex := len(myEntries) - 1
+	myLastTerm := -1
+	if myLastIndex != -1 {
+		myLastTerm = myEntries[myLastIndex].Term
+	}
+	if candidateLastTerm > myLastTerm {
+		return true
+	}
+	if candidateLastTerm < myLastTerm {
+		return false
+	}
+	// last terms are equal
+	return candidateLastIndex >= myLastIndex
 }
 
 //

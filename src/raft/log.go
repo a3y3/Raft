@@ -70,7 +70,7 @@ func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 	rf.mu.Unlock()
 
 	rf.logMsg(UPSERTLOG, fmt.Sprintf("Upsert finished. New logs are %v", rf.getLogEntries()))
-	if startingIndex < len(rf.getLogEntries())-1 {
+	if startingIndex <= len(rf.getLogEntries())-1 {
 		rf.trimLogEntries(startingIndex)
 		rf.logMsg(UPSERTLOG, fmt.Sprintf("Trimmed excess logs from %v to end. New logs are %v", startingIndex, rf.getLogEntries()))
 	}
@@ -83,6 +83,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int, logEntries []Log
 		prevIndex := nextIndex - 1
 		prevTerm := 0
 		if prevIndex != -1 {
+			rf.logMsg(APPLOGREQ, fmt.Sprintf("Fetching prevTerm for %v", server_idx))
 			prevTerm = logEntries[prevIndex].Term
 		}
 		commitIndex := rf.getCommitIndex()
@@ -112,7 +113,8 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int, logEntries []Log
 				rf.setMatchIndexFor(reply.Id, reply.LogLength-1)
 			} else {
 				rf.decrementNextIndexFor(reply.Id)
-				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a non-success reply from %v, so decremented their nextIndex by 1 to %v", reply.Id, rf.getNextIndexFor(reply.Id)))
+				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a non-success reply from %v, so decremented their nextIndex to %v", reply.Id, rf.getNextIndexFor(reply.Id)))
+				ok = false
 			}
 		}
 	}
@@ -133,7 +135,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int, logEntries []Log
 			}
 		}
 		if numServers > len(rf.peers)/2 && rf.logEntries[N].Term == rf.currentTerm.number {
-			go rf.logMsg(APPLOGREPL, fmt.Sprintf("Found N as %v! Updating commitIndex", N))
+			go rf.logMsg(APPLOGREQ, fmt.Sprintf("Found N as %v! Updating commitIndex", N))
 			go rf.setCommitIndex(N)
 		}
 	}
