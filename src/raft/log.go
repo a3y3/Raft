@@ -102,7 +102,8 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int, logEntries []Log
 				return
 			}
 			if reply.ReplyEntriesTermNumber > currentTerm {
-				rf.logMsg(APPLOGREPL, fmt.Sprintf("Follower has a higher term. Exiting this and hoping I will step down later when I get an AppendEntries from the new leader!"))
+				rf.logMsg(APPLOGREPL, fmt.Sprintf("Follower has a higher term - returning to follower state!"))
+				rf.setCurrentState(follower)
 				return
 			}
 			if reply.Success {
