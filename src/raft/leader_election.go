@@ -28,7 +28,7 @@ func (rf *Raft) leader() {
 		rf.setMatchIndexFor(rf.me, len(logEntries)-1)
 		for server_idx := range rf.peers {
 			if server_idx != rf.me {
-				go rf.sendLogEntries(server_idx, currentTerm, logEntries)
+				go rf.sendLogEntries(server_idx, currentTerm)
 			}
 		}
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))

@@ -76,9 +76,11 @@ func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 	}
 }
 
-func (rf *Raft) sendLogEntries(server_idx int, currentTerm int, logEntries []LogEntry) {
+func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 	ok := false
+
 	for !ok && !rf.killed() && rf.getCurrentState() == leader {
+		logEntries := rf.getLogEntries()
 		nextIndex := rf.getNextIndexFor(server_idx)
 		prevIndex := nextIndex - 1
 		prevTerm := 0
