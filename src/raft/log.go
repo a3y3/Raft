@@ -61,17 +61,19 @@ func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 		if startingIndex >= len(rf.logEntries) {
 			rf.logEntries = append(rf.logEntries, logEntry)
 		} else {
-			rf.logEntries[startingIndex] = logEntry
+			if rf.logEntries[startingIndex].Term != logEntry.Term {
+				//Fig 2. AppendEntries.3
+				rf.logEntries = rf.logEntries[:startingIndex]   // Trim everything including this entry
+				rf.logEntries = append(rf.logEntries, logEntry) // append the new log
+			} else {
+				rf.logEntries[startingIndex] = logEntry
+			}
 		}
 		startingIndex++
 	}
 	rf.mu.Unlock()
 
 	rf.logMsg(UPSERTLOG, fmt.Sprintf("Upsert finished. New logs are %v", rf.getLogEntries()))
-	if startingIndex <= len(rf.getLogEntries())-1 {
-		rf.trimLogEntries(startingIndex)
-		rf.logMsg(UPSERTLOG, fmt.Sprintf("Trimmed excess logs from %v to end. New logs are %v", startingIndex, rf.getLogEntries()))
-	}
 }
 
 func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {

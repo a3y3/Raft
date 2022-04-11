@@ -41,12 +41,6 @@ func (rf *Raft) getLastApplied() int {
 	return rf.lastApplied
 }
 
-func (rf *Raft) trimLogEntries(endIndex int) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	rf.logEntries = rf.logEntries[:endIndex]
-}
-
 func (logEntry LogEntry) String() string {
 	return fmt.Sprintf("(%v %v);", logEntry.Term, logEntry.Command)
 }
