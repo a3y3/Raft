@@ -52,8 +52,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	*reply = AppendEntriesReply{
 		ReplyEntriesTermNumber: currentTerm,
 		Success:                success,
-		Id:                     rf.me,
-		LogLength:              rf.getLogLength(),
 	}
 }
 
@@ -85,7 +83,6 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 		prevIndex := nextIndex - 1
 		prevTerm := 0
 		if prevIndex != -1 {
-			rf.logMsg(APPLOGREQ, fmt.Sprintf("Fetching prevTerm for %v", server_idx))
 			prevTerm = logEntries[prevIndex].Term
 		}
 		commitIndex := rf.getCommitIndex()
@@ -110,12 +107,12 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 				return
 			}
 			if reply.Success {
-				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a success reply! Updating %v's nextIndex from %v to %v", reply.Id, rf.getNextIndexFor(reply.Id), reply.LogLength))
-				rf.setNextIndexFor(reply.Id, reply.LogLength)
-				rf.setMatchIndexFor(reply.Id, reply.LogLength-1)
+				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a success reply! Updating %v's nextIndex from %v to %v", server_idx, rf.getNextIndexFor(server_idx), len(logEntries)))
+				rf.setNextIndexFor(server_idx, len(logEntries))
+				rf.setMatchIndexFor(server_idx, len(logEntries)-1)
 			} else {
-				rf.decrementNextIndexFor(reply.Id)
-				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a non-success reply from %v, so decremented their nextIndex to %v", reply.Id, rf.getNextIndexFor(reply.Id)))
+				rf.decrementNextIndexFor(server_idx)
+				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a non-success reply from %v, so decremented their nextIndex to %v", server_idx, rf.getNextIndexFor(server_idx)))
 				ok = false
 			}
 		}

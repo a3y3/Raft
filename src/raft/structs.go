@@ -280,8 +280,6 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	ReplyEntriesTermNumber int
 	Success                bool
-	Id                     int
-	LogLength              int
 }
 
 //
