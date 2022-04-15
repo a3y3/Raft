@@ -8,6 +8,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	currentTerm := rf.getCurrentTermNumber()
 	success := false
+	xIndex := -1
 
 	if args.AppendEntriesTermNumber >= currentTerm {
 		rf.setReceivedHeartBeat(true)
@@ -29,11 +30,21 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			if prevIndex >= len(logEntries) {
 				rf.logMsg(APPLOGREQ, fmt.Sprintf("prevIndex is too high (%v > %v). Replying false", prevIndex, len(logEntries)))
 				success = false
+				xIndex = len(logEntries) - 1
 			} else {
 				// finally, we can compare the terms of the 2 prev indices
 				if logEntries[prevIndex].Term != args.PrevLogTerm {
-					rf.logMsg(APPLOGREQ, fmt.Sprintf("Term mismatch, replying false (%v != %v)", logEntries[prevIndex].Term, args.PrevLogTerm))
 					success = false
+					prevTerm := logEntries[prevIndex].Term
+					i := prevIndex
+					for i = prevIndex; i >= 0; i-- {
+						term := logEntries[i].Term
+						if term != prevTerm {
+							break
+						}
+					}
+					xIndex = i + 1
+					rf.logMsg(APPLOGREQ, fmt.Sprintf("Term mismatch, replying false (%v != %v). prevIndex: %v, xIndex: %v", logEntries[prevIndex].Term, args.PrevLogTerm, prevIndex, rf.commitIndex))
 				} else {
 					rf.logMsg(APPLOGREQ, "Terms match! Upserting...")
 					rf.upsertLogs(prevIndex+1, args.Entries)
@@ -45,13 +56,16 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if success && args.LeaderCommit > rf.getCommitIndex() {
 			newCommitIndex := min(args.LeaderCommit, rf.getLogLength()-1)
 			rf.logMsg(APPLOGREQ, fmt.Sprintf("Updating commitIndex to %v", newCommitIndex))
-			rf.setCommitIndex(newCommitIndex)
+			rf.mu.Lock()
+			rf.unsafeSetCommitIndex(newCommitIndex)
+			rf.mu.Unlock()
 		}
 	}
 
 	*reply = AppendEntriesReply{
 		ReplyEntriesTermNumber: currentTerm,
 		Success:                success,
+		XIndex:                 xIndex,
 	}
 }
 
@@ -113,7 +127,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 				rf.setNextIndexFor(server_idx, len(logEntries))
 				rf.setMatchIndexFor(server_idx, len(logEntries)-1)
 			} else {
-				rf.decrementNextIndexFor(server_idx)
+				rf.setNextIndexFor(server_idx, reply.XIndex)
 				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a non-success reply from %v, so decremented their nextIndex to %v", server_idx, rf.getNextIndexFor(server_idx)))
 				ok = false
 			}
@@ -137,7 +151,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 		}
 		if numServers > len(rf.peers)/2 && rf.logEntries[N].Term == rf.currentTerm.number {
 			go rf.logMsg(APPLOGREQ, fmt.Sprintf("Found N as %v! Updating commitIndex", N))
-			go rf.setCommitIndex(N)
+			rf.unsafeSetCommitIndex(N)
 		}
 	}
 	rf.mu.Unlock()

@@ -42,7 +42,7 @@ func (rf *Raft) getLastApplied() int {
 }
 
 func (logEntry LogEntry) String() string {
-	return fmt.Sprintf("(%v %v);", logEntry.Term, logEntry.Command)
+	return fmt.Sprintf("(%v);", logEntry.Term)
 }
 
 func (rf *Raft) initNextIndex() {
@@ -53,9 +53,8 @@ func (rf *Raft) initNextIndex() {
 	}
 }
 
-func (rf *Raft) setCommitIndex(commitIndex int) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+// Warning - Applies a commit without locks. Please make sure locks are acquired BEFORE calling this function.
+func (rf *Raft) unsafeSetCommitIndex(commitIndex int) {
 	rf.commitIndex = commitIndex
 	for rf.commitIndex > rf.lastApplied {
 		go rf.logMsg(APPLOGREQ, fmt.Sprintf("CommitIndex %v is higher than lastApplied %v, incrementing lastApplied by 1!", rf.commitIndex, rf.lastApplied))
@@ -274,6 +273,7 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	ReplyEntriesTermNumber int
 	Success                bool
+	XIndex                 int
 }
 
 //
