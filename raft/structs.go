@@ -233,9 +233,9 @@ func (s State) String() string {
 
 const (
 	// all times in milliseconds
-	HB_INTERVAL int = 200 // send a heartbeat per this time
-	HB_WAIT_MIN int = 300 // allow this much time at least for HB
-	HB_WAIT_MAX int = 600 // allow this much time at most for HB
+	HB_INTERVAL int = 150 // send a heartbeat per this much time
+	HB_WAIT_MIN int = 250 // allow this much time at least for HB
+	HB_WAIT_MAX int = 500 // allow this much time at most for HB
 )
 
 //

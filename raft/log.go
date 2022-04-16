@@ -44,7 +44,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 						}
 					}
 					xIndex = i + 1
-					rf.logMsg(APPLOGREQ, fmt.Sprintf("Term mismatch, replying false (%v != %v). prevIndex: %v, xIndex: %v", logEntries[prevIndex].Term, args.PrevLogTerm, prevIndex, rf.commitIndex))
+					rf.logMsg(APPLOGREQ, fmt.Sprintf("Term mismatch, replying false (%v != %v). prevIndex: %v, xIndex: %v", logEntries[prevIndex].Term, args.PrevLogTerm, prevIndex, xIndex))
 				} else {
 					rf.logMsg(APPLOGREQ, "Terms match! Upserting...")
 					rf.upsertLogs(prevIndex+1, args.Entries)
@@ -186,8 +186,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Term:    rf.currentTerm.number,
 	}
 	rf.logEntries = append(rf.logEntries, logEntry) // this will be sent to followers in the next HB
+	rf.matchIndex[rf.me] = len(rf.logEntries) - 1
 	rf.mu.Unlock()
 	rf.logMsg(LOGENTRIES, fmt.Sprintf("Appended new entry to self. New logEntries is %v", rf.getLogEntries()))
+	for server_idx := range rf.peers {
+		if server_idx != rf.me {
+			go rf.sendLogEntries(server_idx, currentTerm)
+		}
+	}
 
 	return index + 1, currentTerm, true // the tests assume logs are 1-indexed
 }

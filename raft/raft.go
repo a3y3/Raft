@@ -56,9 +56,8 @@ func init() {
 
 func (rf *Raft) logMsg(topic Topic, msg string) {
 	if debugVerbosity >= 1 {
-		time := time.Since(debugStart).Microseconds()
-		time /= 100
-		log.Printf("%06d %v %v T%v S%v %v\n", time, topic, rf.getCurrentState(), rf.getCurrentTermNumber(), rf.me, msg)
+		time := time.Since(debugStart).Milliseconds()
+		log.Printf("%v %v %v T%v S%v %v\n", time, topic, rf.getCurrentState(), rf.getCurrentTermNumber(), rf.me, msg)
 	}
 }
 
