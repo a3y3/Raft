@@ -8,7 +8,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	currentTerm := rf.getCurrentTermNumber()
 	success := false
-	xIndex := -1
+	xIndex := 0
 
 	if args.AppendEntriesTermNumber >= currentTerm {
 		rf.setReceivedHeartBeat(true)
@@ -30,7 +30,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			if prevIndex >= len(logEntries) {
 				rf.logMsg(APPLOGREQ, fmt.Sprintf("prevIndex is too high (%v > %v). Replying false", prevIndex, len(logEntries)))
 				success = false
-				xIndex = len(logEntries) - 1
+				xIndex = max(0, len(logEntries)-1)
 			} else {
 				// finally, we can compare the terms of the 2 prev indices
 				if logEntries[prevIndex].Term != args.PrevLogTerm {
@@ -60,6 +60,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.unsafeSetCommitIndex(newCommitIndex)
 			rf.mu.Unlock()
 		}
+	}
+
+	if success { // we modified some entries
+		rf.mu.Lock()
+		rf.unsafePersist()
+		rf.mu.Unlock()
 	}
 
 	*reply = AppendEntriesReply{
@@ -149,7 +155,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 				numServers += 1
 			}
 		}
-		if numServers > len(rf.peers)/2 && rf.logEntries[N].Term == rf.currentTerm.number {
+		if numServers > len(rf.peers)/2 && rf.logEntries[N].Term == rf.currentTerm.Number {
 			go rf.logMsg(APPLOGREQ, fmt.Sprintf("Found N as %v! Updating commitIndex", N))
 			rf.unsafeSetCommitIndex(N)
 		}
@@ -180,15 +186,17 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	rf.mu.Lock()
 	index := len(rf.logEntries)
-	currentTerm := rf.currentTerm.number
+	currentTerm := rf.currentTerm.Number
 	logEntry := LogEntry{
 		Command: command,
-		Term:    rf.currentTerm.number,
+		Term:    rf.currentTerm.Number,
 	}
 	rf.logEntries = append(rf.logEntries, logEntry) // this will be sent to followers in the next HB
 	rf.matchIndex[rf.me] = len(rf.logEntries) - 1
+	rf.unsafePersist()
 	rf.mu.Unlock()
 	rf.logMsg(LOGENTRIES, fmt.Sprintf("Appended new entry to self. New logEntries is %v", rf.getLogEntries()))
+
 	for server_idx := range rf.peers {
 		if server_idx != rf.me {
 			go rf.sendLogEntries(server_idx, currentTerm)

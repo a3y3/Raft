@@ -107,20 +107,21 @@ func (rf *Raft) getNextIndexFor(server int) int {
 func (rf *Raft) setLeaderId(leaderId int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.currentTerm.leaderId = leaderId
+	rf.currentTerm.LeaderId = leaderId
 }
 
 func (rf *Raft) getVotedFor() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return rf.currentTerm.votedFor
+	return rf.currentTerm.VotedFor
 }
 
 func (rf *Raft) setVotedFor(index int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	if rf.currentTerm.votedFor == -1 {
-		rf.currentTerm.votedFor = index
+	if rf.currentTerm.VotedFor == -1 {
+		rf.currentTerm.VotedFor = index
+		rf.unsafePersist()
 	} else {
 		// logMsg needs to be on a separate thread as logMsg acquires mu lock (which this thread already has). This is not ideal, but as this is the only instance of it (and it's an extremely rare case), it's okay.
 		go rf.logMsg(VOTE, "Warning: Avoided a rare condition in which a server could vote for 2 different servers in the same term.")
@@ -130,31 +131,31 @@ func (rf *Raft) setVotedFor(index int) {
 func (rf *Raft) getCurrentTermNumber() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return rf.currentTerm.number
+	return rf.currentTerm.Number
 }
 
 func (rf *Raft) getCurrentState() State {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return rf.currentTerm.state
+	return rf.currentTerm.State
 }
 
 func (rf *Raft) setCurrentState(state State) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.currentTerm.state = state
+	rf.currentTerm.State = state
 }
 
 func (rf *Raft) getElectionTimeout() time.Duration {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return rf.currentTerm.electionTimeout
+	return rf.currentTerm.ElectionTimeout
 }
 
 func (rf *Raft) setElectionTimeout(newTimeout time.Duration) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.currentTerm.electionTimeout = newTimeout
+	rf.currentTerm.ElectionTimeout = newTimeout
 }
 
 func (rf *Raft) getReceivedHeartBeat() bool {
@@ -170,25 +171,26 @@ func (rf *Raft) setReceivedHeartBeat(value bool) {
 }
 
 type Term struct {
-	number          int
-	votedFor        int           // candidateId that this server voted for in this term
-	electionTimeout time.Duration // the timeout for this term. Reset every election term.
-	state           State         // state enum {follower/candidate/leader} the server was in for this term.
-	leaderId        int           // id of the leader for this term.
+	Number          int
+	VotedFor        int           // candidateId that this server voted for in this term
+	ElectionTimeout time.Duration // the timeout for this term. Reset every election term.
+	State           State         // state enum {follower/candidate/leader} the server was in for this term.
+	LeaderId        int           // id of the leader for this term.
 }
 
 func (rf *Raft) setTerm(term Term) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	rf.currentTerm = term
+	rf.unsafePersist()
 }
 
 func generateNewTerm(number int, state State, electionTimeout time.Duration) Term {
 	return Term{
-		number:          number,
-		votedFor:        -1,
-		electionTimeout: electionTimeout,
-		state:           state,
+		Number:          number,
+		VotedFor:        -1,
+		ElectionTimeout: electionTimeout,
+		State:           state,
 	}
 }
 
@@ -217,6 +219,8 @@ const (
 	APPLOGREPL Topic = "APPLOGREPL"
 	APPLOGREQ  Topic = "APPLOGREQ"
 	UPSERTLOG  Topic = "UPSERTLOG"
+
+	PERSIST Topic = "PERSIST"
 )
 
 func (s State) String() string {

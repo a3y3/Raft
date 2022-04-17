@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -86,11 +87,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.commitIndex = -1
 	rf.lastApplied = -1
 	rf.applyCh = applyCh
-	newTerm := generateNewTerm(0, follower, generateNewElectionTimeout())
-	rf.setTerm(newTerm)
-
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
+	prevState := rf.readPersist(persister.ReadRaftState())
+	if !prevState {
+		newTerm := generateNewTerm(0, follower, generateNewElectionTimeout())
+		rf.setTerm(newTerm)
+	}
+
+	rf.logMsg(PERSIST, fmt.Sprintf("Read state. votedFor: %v, term: %v, entries: %v", rf.getVotedFor(), rf.getCurrentTermNumber(), rf.getLogEntries()))
 
 	go rf.tickr()
 
