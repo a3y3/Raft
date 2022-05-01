@@ -15,7 +15,7 @@ func (rf *Raft) unsafePersist() {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	e.Encode(rf.currentTerm)
-	e.Encode(rf.logEntries)
+	e.Encode(rf.log.Entries)
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
 }
@@ -37,7 +37,7 @@ func (rf *Raft) readPersist(data []byte) bool {
 	} else {
 		rf.mu.Lock()
 		rf.currentTerm = term
-		rf.logEntries = logEntries
+		rf.log.Entries = logEntries
 		rf.mu.Unlock()
 	}
 	return true

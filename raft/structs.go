@@ -21,12 +21,18 @@ type Raft struct {
 	currentTerm       Term                // current Term of the Raft peer.
 	receivedHeartbeat bool
 	applyCh           chan ApplyMsg
-	logEntries        []LogEntry
+	log               Log
 	commitIndex       int // index of highest logEntry known to be commited
 	lastApplied       int // index of highest logEntry applied to state machine
 
 	nextIndex  []int // leader only - index of next entry for each follower
 	matchIndex []int // leader only - index of highest entry known to be replicated for each follower
+}
+
+func (rf *Raft) getOffset() int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.log.Offset
 }
 
 func (rf *Raft) setMatchIndexFor(server int, index int) {
@@ -49,7 +55,7 @@ func (rf *Raft) initNextIndex() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	for i := range rf.peers {
-		rf.nextIndex[i] = len(rf.logEntries)
+		rf.nextIndex[i] = rf.log.Offset + len(rf.log.Entries)
 	}
 }
 
@@ -57,11 +63,10 @@ func (rf *Raft) initNextIndex() {
 func (rf *Raft) unsafeSetCommitIndex(commitIndex int) {
 	rf.commitIndex = commitIndex
 	for rf.commitIndex > rf.lastApplied {
-		go rf.logMsg(APPLOGREQ, fmt.Sprintf("CommitIndex %v is higher than lastApplied %v, incrementing lastApplied by 1!", rf.commitIndex, rf.lastApplied))
 		rf.lastApplied += 1
 		applyMsg := ApplyMsg{
 			CommandValid: true,
-			Command:      rf.logEntries[rf.lastApplied].Command,
+			Command:      rf.log.Entries[rf.lastApplied-rf.log.Offset].Command,
 			CommandIndex: rf.lastApplied + 1, // the tests assume logs are 1-indexed
 		}
 		rf.applyCh <- applyMsg
@@ -77,13 +82,13 @@ func (rf *Raft) getCommitIndex() int {
 func (rf *Raft) getLogLength() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return len(rf.logEntries)
+	return rf.log.Offset + len(rf.log.Entries)
 }
 
 func (rf *Raft) getLogEntries() []LogEntry {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return append([]LogEntry{}, rf.logEntries...) // create a copy to avoid race
+	return append([]LogEntry{}, rf.log.Entries...) // create a copy to avoid race
 }
 
 func (rf *Raft) decrementNextIndexFor(server int) {
@@ -116,11 +121,11 @@ func (rf *Raft) getVotedFor() int {
 	return rf.currentTerm.VotedFor
 }
 
-func (rf *Raft) setVotedFor(index int) {
+func (rf *Raft) setVotedFor(server int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if rf.currentTerm.VotedFor == -1 {
-		rf.currentTerm.VotedFor = index
+		rf.currentTerm.VotedFor = server
 		rf.unsafePersist()
 	} else {
 		// logMsg needs to be on a separate thread as logMsg acquires mu lock (which this thread already has). This is not ideal, but as this is the only instance of it (and it's an extremely rare case), it's okay.
@@ -194,6 +199,15 @@ func generateNewTerm(number int, state State, electionTimeout time.Duration) Ter
 	}
 }
 
+type SnapShot struct {
+}
+
+type Log struct {
+	Entries      []LogEntry
+	Offset       int
+	PrevSnapShot SnapShot
+}
+
 type LogEntry struct {
 	Command interface{} // command for the state machine
 	Term    int         // term when entry was first received by leader
@@ -258,7 +272,7 @@ type ApplyMsg struct {
 	Command      interface{}
 	CommandIndex int
 
-	// For 2D:
+	// For log compaction:
 	SnapshotValid bool
 	Snapshot      []byte
 	SnapshotTerm  int
