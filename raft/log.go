@@ -1,6 +1,9 @@
 package raft
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.rpcLock.Lock()
@@ -19,6 +22,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 		prevIndex := args.PrevLogIndex
 		logEntries := rf.getLogEntries()
+		offset := rf.getOffset()
 
 		if prevIndex == -1 {
 			// upsert without comparing
@@ -27,14 +31,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			success = true
 		} else {
 			// first check if prevIndex is valid
-			if prevIndex >= len(logEntries) {
-				rf.logMsg(APPLOGREQ, fmt.Sprintf("prevIndex is too high (%v > %v). Replying false", prevIndex, len(logEntries)))
+			if prevIndex >= len(logEntries)+offset {
+				rf.logMsg(APPLOGREQ, fmt.Sprintf("prevIndex is too high (%v > %v). Replying false", prevIndex, len(logEntries)+offset))
 				success = false
-				xIndex = max(0, len(logEntries)-1)
+				xIndex = max(0, len(logEntries)+offset-1)
 			} else {
 				// finally, we can compare the terms of the 2 prev indices
 				offset := rf.getOffset()
-				if logEntries[prevIndex-offset].Term != args.PrevLogTerm {
+				if prevIndex-offset < 0 {
+					success = false
+					xIndex = offset
+				} else if logEntries[prevIndex-offset].Term != args.PrevLogTerm {
 					success = false
 					prevTerm := logEntries[prevIndex-offset].Term
 					i := prevIndex
@@ -108,7 +115,12 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 		prevIndex := nextIndex - 1
 		prevTerm := 0
 		if prevIndex != -1 {
-			prevTerm = logEntries[prevIndex-offset].Term
+			if prevIndex-offset < 0 {
+				time.Sleep(time.Millisecond * 10) // InstallSnapshot()
+				continue
+			} else {
+				prevTerm = logEntries[prevIndex-offset].Term
+			}
 		}
 		commitIndex := rf.getCommitIndex()
 		args := AppendEntriesArgs{

@@ -200,6 +200,7 @@ func generateNewTerm(number int, state State, electionTimeout time.Duration) Ter
 }
 
 type SnapShot struct {
+	data []byte
 }
 
 type Log struct {
@@ -235,6 +236,8 @@ const (
 	UPSERTLOG  Topic = "UPSERTLOG"
 
 	PERSIST Topic = "PERSIST"
+
+	SNAPSHOT Topic = "SNAPSHOT"
 )
 
 func (s State) String() string {
@@ -272,7 +275,7 @@ type ApplyMsg struct {
 	Command      interface{}
 	CommandIndex int
 
-	// For log compaction:
+	// For log compaction (only on start):
 	SnapshotValid bool
 	Snapshot      []byte
 	SnapshotTerm  int

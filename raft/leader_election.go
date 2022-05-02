@@ -25,7 +25,8 @@ func (rf *Raft) leader() {
 		rf.setReceivedHeartBeat(true)
 		rf.logMsg(LEAD, "Sending HBs")
 		logEntries := rf.getLogEntries()
-		rf.setMatchIndexFor(rf.me, len(logEntries)-1)
+		offset := rf.getOffset()
+		rf.setMatchIndexFor(rf.me, len(logEntries)+offset-1)
 		for server_idx := range rf.peers {
 			if server_idx != rf.me {
 				go rf.sendLogEntries(server_idx, currentTerm)
