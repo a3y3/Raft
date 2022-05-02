@@ -1,6 +1,8 @@
 package raft
 
-import "fmt"
+import (
+	"fmt"
+)
 
 //
 // !! DEPRECATED !!
@@ -15,7 +17,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	index -= 1 // tests assume logs are 1 indexed
-	go rf.logMsg(SNAPSHOT, fmt.Sprintf("Snapshot called - trimming all entries upto and including %v", index))
+	rf.logMsg(SNAPSHOT, fmt.Sprintf("Snapshot called - trimming all entries upto and including %v", index))
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	offset := rf.log.Offset

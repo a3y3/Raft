@@ -64,9 +64,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if success && args.LeaderCommit > rf.getCommitIndex() {
 			newCommitIndex := min(args.LeaderCommit, rf.getLogLength()-1)
 			rf.logMsg(APPLOGREQ, fmt.Sprintf("Updating commitIndex to %v", newCommitIndex))
-			rf.mu.Lock()
-			rf.unsafeSetCommitIndex(newCommitIndex)
-			rf.mu.Unlock()
+			rf.setCommitIndex(newCommitIndex)
 		}
 	}
 
@@ -155,6 +153,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 		}
 	}
 
+	higherCommitIndex := -1
 	rf.mu.Lock()
 	maxIndex := 0
 	for _, matchIndex := range rf.matchIndex {
@@ -162,7 +161,6 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 			maxIndex = matchIndex
 		}
 	}
-
 	for N := rf.commitIndex + 1; N <= maxIndex; N++ {
 		numServers := 0
 		for _, matchIndex := range rf.matchIndex {
@@ -171,11 +169,14 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 			}
 		}
 		if numServers > len(rf.peers)/2 && rf.log.Entries[N-rf.log.Offset].Term == rf.currentTerm.Number {
-			go rf.logMsg(APPLOGREQ, fmt.Sprintf("Found N as %v! Updating commitIndex", N))
-			rf.unsafeSetCommitIndex(N)
+			higherCommitIndex = N
 		}
 	}
 	rf.mu.Unlock()
+	if higherCommitIndex != -1 {
+		rf.logMsg(APPLOGREQ, fmt.Sprintf("Found a higherCommitIndex as %v! Updating commitIndex", higherCommitIndex))
+		rf.setCommitIndex(higherCommitIndex)
+	}
 
 }
 

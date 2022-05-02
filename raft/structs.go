@@ -59,9 +59,10 @@ func (rf *Raft) initNextIndex() {
 	}
 }
 
-// Warning - Applies a commit without locks. Please make sure locks are acquired BEFORE calling this function.
-func (rf *Raft) unsafeSetCommitIndex(commitIndex int) {
+func (rf *Raft) setCommitIndex(commitIndex int) {
+	rf.mu.Lock()
 	rf.commitIndex = commitIndex
+	rf.mu.Unlock() // sends on channels block, so don't hold lock while sending
 	for rf.commitIndex > rf.lastApplied {
 		rf.lastApplied += 1
 		applyMsg := ApplyMsg{
