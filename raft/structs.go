@@ -29,6 +29,12 @@ type Raft struct {
 	matchIndex []int // leader only - index of highest entry known to be replicated for each follower
 }
 
+func (rf *Raft) getSnapShotTermNumber() int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.log.SnapShot.TermNumber
+}
+
 func (rf *Raft) getOffset() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -201,13 +207,14 @@ func generateNewTerm(number int, state State, electionTimeout time.Duration) Ter
 }
 
 type SnapShot struct {
-	data []byte
+	Data       []byte
+	TermNumber int
 }
 
 type Log struct {
-	Entries      []LogEntry
-	Offset       int
-	PrevSnapShot SnapShot
+	Entries  []LogEntry
+	Offset   int
+	SnapShot SnapShot
 }
 
 type LogEntry struct {
@@ -228,13 +235,14 @@ type Topic string
 const (
 	TIMER    Topic = "TIMER"
 	VOTE     Topic = "VOTE"
-	LEAD     Topic = "LEAD"
-	ELECTION Topic = "ELCTION"
+	LEADER   Topic = "LEADER"
+	ELECTION Topic = "ELECTION"
 
-	LOGENTRIES Topic = "LOGSTATUS"
-	APPLOGREPL Topic = "APPLOGREPL"
-	APPLOGREQ  Topic = "APPLOGREQ"
-	UPSERTLOG  Topic = "UPSERTLOG"
+	LOG_ENTRIES    Topic = "LOG_ENTRIES"
+	APPEND_ENTRIES Topic = "APPEND_ENTRIES"
+	APPEND_REPLY   Topic = "APPEND_REPLY"
+	UPSERT_LOG     Topic = "UPSERT_LOG"
+	COMMIT_UPDATE  Topic = "COMMIT_UPDATE"
 
 	PERSIST Topic = "PERSIST"
 

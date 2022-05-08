@@ -2,7 +2,6 @@ package raft
 
 import (
 	"fmt"
-	"time"
 )
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -24,23 +23,21 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		logEntries := rf.getLogEntries()
 		offset := rf.getOffset()
 
-		if prevIndex == -1 {
-			// upsert without comparing
-			rf.logMsg(APPLOGREQ, "Upserting without comparing as prevIndex is -1")
-			rf.upsertLogs(0, args.Entries)
+		if prevIndex-offset == -1 {
+			rf.upsertLogs(prevIndex-offset+1, args.Entries)
 			success = true
 		} else {
 			// first check if prevIndex is valid
 			if prevIndex >= len(logEntries)+offset {
-				rf.logMsg(APPLOGREQ, fmt.Sprintf("prevIndex is too high (%v > %v). Replying false", prevIndex, len(logEntries)+offset))
+				rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too high (%v >= %v). Replying false", prevIndex, len(logEntries)+offset))
 				success = false
-				xIndex = max(0, len(logEntries)+offset-1)
+				xIndex = len(logEntries) + offset
 			} else {
 				// finally, we can compare the terms of the 2 prev indices
-				offset := rf.getOffset()
 				if prevIndex-offset < 0 {
 					success = false
-					xIndex = offset
+					xIndex = offset + 1
+					rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too low (%v) - updating with xIndex %v", prevIndex-offset, xIndex))
 				} else if logEntries[prevIndex-offset].Term != args.PrevLogTerm {
 					success = false
 					prevTerm := logEntries[prevIndex-offset].Term
@@ -52,9 +49,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 						}
 					}
 					xIndex = i + 1
-					rf.logMsg(APPLOGREQ, fmt.Sprintf("Term mismatch, replying false (%v != %v). prevIndex: %v, xIndex: %v", logEntries[prevIndex-offset].Term, args.PrevLogTerm, prevIndex, xIndex))
+					rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("Replying false (prev entry term mismatch: %v != %v). prevIndex: %v, xIndex: %v", logEntries[prevIndex-offset].Term, args.PrevLogTerm, prevIndex, xIndex))
 				} else {
-					rf.logMsg(APPLOGREQ, "Upserting...")
 					rf.upsertLogs(prevIndex+1, args.Entries)
 					success = true
 				}
@@ -63,7 +59,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 		if success && args.LeaderCommit > rf.getCommitIndex() {
 			newCommitIndex := min(args.LeaderCommit, rf.getLogLength()-1)
-			rf.logMsg(APPLOGREQ, fmt.Sprintf("Updating commitIndex to %v", newCommitIndex))
+			rf.logMsg(COMMIT_UPDATE, fmt.Sprintf("Updating commitIndex to %v", newCommitIndex))
 			rf.setCommitIndex(newCommitIndex)
 		}
 	}
@@ -85,7 +81,7 @@ func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 	rf.mu.Lock()
 	startingIndex -= rf.log.Offset
 	for _, logEntry := range leaderLogs {
-		if startingIndex >= rf.log.Offset+len(rf.log.Entries) {
+		if startingIndex >= len(rf.log.Entries) {
 			rf.log.Entries = append(rf.log.Entries, logEntry)
 		} else {
 			if rf.log.Entries[startingIndex].Term != logEntry.Term {
@@ -100,27 +96,31 @@ func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 	}
 	rf.mu.Unlock()
 
-	rf.logMsg(UPSERTLOG, fmt.Sprintf("Upsert finished. New logs are %v", rf.getLogEntries()))
+	rf.logMsg(UPSERT_LOG, fmt.Sprintf("Upsert finished. New logs are %v (offset: %v)", rf.getLogEntries(), rf.getOffset()))
 }
 
 func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 	ok := false
 
 	for !ok && !rf.killed() && rf.getCurrentState() == leader {
-		logEntries := rf.getLogEntries()
-		offset := rf.getOffset()
-		nextIndex := rf.getNextIndexFor(server_idx)
+		rf.mu.Lock()
+		logEntries := append([]LogEntry{}, rf.log.Entries...)
+		offset := rf.log.Offset
+		nextIndex := rf.nextIndex[server_idx]
 		prevIndex := nextIndex - 1
 		prevTerm := 0
+		commitIndex := rf.commitIndex
+		rf.mu.Unlock()
+
 		if prevIndex != -1 {
 			if prevIndex-offset < 0 {
-				time.Sleep(time.Millisecond * 10) // InstallSnapshot()
-				continue
+				prevTerm = rf.getSnapShotTermNumber()
+				// time.Sleep(time.Millisecond * 10) // InstallSnapshot()
+				rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("Sending prevTerm as %v, prevIndex as %v", prevTerm, prevIndex))
 			} else {
 				prevTerm = logEntries[prevIndex-offset].Term
 			}
 		}
-		commitIndex := rf.getCommitIndex()
 		args := AppendEntriesArgs{
 			AppendEntriesTermNumber: currentTerm,
 			LeaderId:                rf.me,
@@ -133,21 +133,21 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 		ok = rf.sendAppendEntries(server_idx, &args, &reply)
 		if ok {
 			if rf.getCurrentTermNumber() > currentTerm {
-				rf.logMsg(APPLOGREPL, "My term is greater than the term I started this RPC with - returning")
+				rf.logMsg(APPEND_REPLY, "My term is greater than the term I started this RPC with - returning")
 				return
 			}
 			if reply.ReplyEntriesTermNumber > currentTerm {
-				rf.logMsg(APPLOGREPL, fmt.Sprintf("Follower has a higher term - returning to follower state!"))
+				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Follower has a higher term - returning to follower state!"))
 				rf.setCurrentState(follower)
 				return
 			}
 			if reply.Success {
-				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a success reply! Updating %v's nextIndex from %v to %v", server_idx, rf.getNextIndexFor(server_idx), len(logEntries)+offset))
+				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Got a success reply! Updating %v's nextIndex from %v to %v", server_idx, rf.getNextIndexFor(server_idx), len(logEntries)+offset))
 				rf.setNextIndexFor(server_idx, len(logEntries)+offset)
 				rf.setMatchIndexFor(server_idx, len(logEntries)+offset-1)
 			} else {
 				rf.setNextIndexFor(server_idx, reply.XIndex)
-				rf.logMsg(APPLOGREPL, fmt.Sprintf("Got a non-success reply from %v, so decremented their nextIndex to %v", server_idx, rf.getNextIndexFor(server_idx)))
+				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Got a non-success reply from %v, so decremented their nextIndex to %v", server_idx, rf.getNextIndexFor(server_idx)))
 				ok = false
 			}
 		}
@@ -174,10 +174,9 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 	}
 	rf.mu.Unlock()
 	if higherCommitIndex != -1 {
-		rf.logMsg(APPLOGREQ, fmt.Sprintf("Found a higherCommitIndex as %v! Updating commitIndex", higherCommitIndex))
+		rf.logMsg(COMMIT_UPDATE, fmt.Sprintf("Found a higherCommitIndex as %v! Updating commitIndex", higherCommitIndex))
 		rf.setCommitIndex(higherCommitIndex)
 	}
-
 }
 
 //
@@ -212,13 +211,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.unsafePersist()
 	rf.mu.Unlock()
 
-	rf.logMsg(LOGENTRIES, fmt.Sprintf("Appended new entry to self. New logEntries is %v", rf.getLogEntries()))
-
-	for server_idx := range rf.peers {
-		if server_idx != rf.me {
-			go rf.sendLogEntries(server_idx, currentTerm)
-		}
-	}
+	rf.logMsg(LOG_ENTRIES, fmt.Sprintf("Appended new entry to self. New logEntries is %v (offset: %v)", rf.getLogEntries(), rf.getOffset()))
 
 	return index + 1, currentTerm, true // the tests assume logs are 1-indexed
 }

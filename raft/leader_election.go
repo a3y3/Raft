@@ -19,23 +19,21 @@ func generateNewElectionTimeout() time.Duration {
 func (rf *Raft) leader() {
 	rf.setCurrentState(leader)
 	rf.initNextIndex()
-	rf.logMsg(LEAD, "Starting my reign as a leader!")
+	rf.logMsg(LEADER, "Starting my reign as a leader!")
 	currentTerm := rf.getCurrentTermNumber()
 	for !rf.killed() && rf.getCurrentState() == leader {
 		rf.setReceivedHeartBeat(true)
-		rf.logMsg(LEAD, "Sending HBs")
-		logEntries := rf.getLogEntries()
-		offset := rf.getOffset()
-		rf.setMatchIndexFor(rf.me, len(logEntries)+offset-1)
+		rf.logMsg(LEADER, "Sending HBs")
+		rf.setMatchIndexFor(rf.me, rf.getLogLength()-1)
 		for server_idx := range rf.peers {
 			if server_idx != rf.me {
 				go rf.sendLogEntries(server_idx, currentTerm)
 			}
 		}
+		rf.logMsg(LEADER, "Sent HBs")
 		time.Sleep(time.Millisecond * time.Duration(HB_INTERVAL))
-		rf.logMsg(LEAD, "Sent HBs")
 	}
-	rf.logMsg(LEAD, "Stepping down from being a leader")
+	rf.logMsg(LEADER, "Stepping down from being a leader")
 }
 
 func (rf *Raft) candidate() {

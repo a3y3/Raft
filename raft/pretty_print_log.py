@@ -10,15 +10,20 @@ from rich.console import Console
 # fmt: off
 # Mapping from topics to colors
 TOPICS = {
-    "TIMER": "#9a9a99",
-    "VOTE": "#67a0b2",
-    "LEAD": "#d0b343",
-    "ELCTN": "#70c43f",
+    "TIMER": "#9E9E9E",
+    "VOTE": "#607D8B",
+    "LEADER": "#8BC34A",
+    "ELECTION": "#F44336",
 
-    "LOGENTRIES": "#98719f",
-    "APPLOGREPL": "#d08341",
-    "APPLOGREQ": "#FD971F",
-    "UPSERTLOG": "#ff615c",
+    "LOG_ENTRIES": "#8BC34A",
+    "APPEND_ENTRIES": "#E91E63",
+    "APPEND_REPLY": "#2196F3",
+    "UPSERT_LOG": "#FFC107",
+    "COMMIT_UPDATE": "#CDDC39",
+
+    "PERSIST": "#009688",
+    
+    "SNAPSHOT": "#CDDC39"
 }
 # fmt: on
 
