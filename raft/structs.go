@@ -68,7 +68,6 @@ func (rf *Raft) initNextIndex() {
 func (rf *Raft) setCommitIndex(commitIndex int) {
 	rf.mu.Lock()
 	rf.commitIndex = commitIndex
-	rf.mu.Unlock() // sends on channels block, so don't hold lock while sending
 	for rf.commitIndex > rf.lastApplied {
 		rf.lastApplied += 1
 		applyMsg := ApplyMsg{
@@ -76,8 +75,11 @@ func (rf *Raft) setCommitIndex(commitIndex int) {
 			Command:      rf.log.Entries[rf.lastApplied-rf.log.Offset].Command,
 			CommandIndex: rf.lastApplied + 1, // the tests assume logs are 1-indexed
 		}
+		rf.mu.Unlock() // sends on channels block, so don't hold lock while sending
 		rf.applyCh <- applyMsg
+		rf.mu.Lock()
 	}
+	rf.mu.Unlock()
 }
 
 func (rf *Raft) getCommitIndex() int {
@@ -267,6 +269,16 @@ const (
 	HB_WAIT_MIN int = 250 // allow this much time at least for HB
 	HB_WAIT_MAX int = 500 // allow this much time at most for HB
 )
+
+type InstallSnapshotArgs struct {
+	TermNumber        int
+	LastIncludedIndex int
+	LastIncludedTerm  int
+}
+
+type InstallSnapshotReply struct {
+	TermNumber int
+}
 
 //
 // as each Raft peer becomes aware that successive log entries are
