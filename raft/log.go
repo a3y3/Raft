@@ -24,7 +24,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		offset := rf.getOffset()
 
 		if prevIndex-offset == -1 {
-			rf.upsertLogs(prevIndex-offset+1, args.Entries)
+			rf.upsertLogs(prevIndex+1, args.Entries)
 			success = true
 		} else {
 			// first check if prevIndex is valid
@@ -112,13 +112,33 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 		commitIndex := rf.commitIndex
 		rf.mu.Unlock()
 
-		if prevIndex != -1 {
-			if prevIndex-offset < 0 {
-				prevTerm = rf.getSnapShotTermNumber()
-				// time.Sleep(time.Millisecond * 10) // InstallSnapshot()
-				rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("Sending prevTerm as %v, prevIndex as %v", prevTerm, prevIndex))
-			} else {
+		if prevIndex-offset == -1 {
+			prevTerm = rf.getSnapshotTermNumber()
+		} else {
+			if prevIndex-offset >= 0 {
 				prevTerm = logEntries[prevIndex-offset].Term
+			} else {
+				rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("Follower is too behind (needs prevIndex=%v with offset %v). Sending InstallSnapshotRPC!", prevIndex, offset))
+				installArgs := InstallSnapshotArgs{
+					TermNumber:        rf.getCurrentTermNumber(),
+					LastIncludedIndex: rf.getSnapshotIndex(),
+					LastIncludedTerm:  rf.getSnapshotTermNumber(),
+					SnapshotData:      rf.getSnapshotData(),
+				}
+				installReply := InstallSnapshotReply{}
+				ok_install := rf.sendInstallSnapshot(server_idx, &installArgs, &installReply)
+				if ok_install {
+					if installReply.TermNumber > currentTerm {
+						rf.logMsg(INSTALL_REPLY, fmt.Sprintf("InstallReply found a higher term than current (%v>%v), returning", installReply.TermNumber, currentTerm))
+						return
+					}
+					rf.setNextIndexFor(server_idx, installArgs.LastIncludedIndex+1)
+					rf.logMsg(INSTALL_REPLY, fmt.Sprintf("Updating nextIndex for S%v to %v", server_idx, installArgs.LastIncludedIndex+1))
+					return
+				} else {
+					rf.logMsg(INSTALL_REPLY, "InstallSnapshot gRPC network error, retrying...")
+					continue
+				}
 			}
 		}
 		args := AppendEntriesArgs{
@@ -142,12 +162,12 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 				return
 			}
 			if reply.Success {
-				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Got a success reply! Updating %v's nextIndex from %v to %v", server_idx, rf.getNextIndexFor(server_idx), len(logEntries)+offset))
+				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Got a success reply! Updating S%v's nextIndex from %v to %v", server_idx, rf.getNextIndexFor(server_idx), len(logEntries)+offset))
 				rf.setNextIndexFor(server_idx, len(logEntries)+offset)
 				rf.setMatchIndexFor(server_idx, len(logEntries)+offset-1)
 			} else {
 				rf.setNextIndexFor(server_idx, reply.XIndex)
-				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Got a non-success reply from %v, so decremented their nextIndex to %v", server_idx, rf.getNextIndexFor(server_idx)))
+				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Got a non-success reply from S%v, so decremented their nextIndex to %v", server_idx, rf.getNextIndexFor(server_idx)))
 				ok = false
 			}
 		}

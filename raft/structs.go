@@ -29,10 +29,34 @@ type Raft struct {
 	matchIndex []int // leader only - index of highest entry known to be replicated for each follower
 }
 
-func (rf *Raft) getSnapShotTermNumber() int {
+func (rf *Raft) setLastApplied(lastApplied int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.lastApplied = lastApplied
+}
+
+func (rf *Raft) getSnapshotData() []byte {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return append([]byte{}, rf.log.SnapShot.Data...)
+}
+
+func (rf *Raft) getSnapshotIndex() int {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.log.SnapShot.Index
+}
+
+func (rf *Raft) getSnapshotTermNumber() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	return rf.log.SnapShot.TermNumber
+}
+
+func (rf *Raft) setOffset(offset int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.log.Offset = offset
 }
 
 func (rf *Raft) getOffset() int {
@@ -67,6 +91,7 @@ func (rf *Raft) initNextIndex() {
 
 func (rf *Raft) setCommitIndex(commitIndex int) {
 	rf.mu.Lock()
+	applyMsgs := make([]ApplyMsg, 0)
 	rf.commitIndex = commitIndex
 	for rf.commitIndex > rf.lastApplied {
 		rf.lastApplied += 1
@@ -75,11 +100,13 @@ func (rf *Raft) setCommitIndex(commitIndex int) {
 			Command:      rf.log.Entries[rf.lastApplied-rf.log.Offset].Command,
 			CommandIndex: rf.lastApplied + 1, // the tests assume logs are 1-indexed
 		}
-		rf.mu.Unlock() // sends on channels block, so don't hold lock while sending
-		rf.applyCh <- applyMsg
-		rf.mu.Lock()
+		applyMsgs = append(applyMsgs, applyMsg)
 	}
 	rf.mu.Unlock()
+	// sends on channels block, so don't hold lock while sending
+	for _, applyMsg := range applyMsgs {
+		rf.applyCh <- applyMsg
+	}
 }
 
 func (rf *Raft) getCommitIndex() int {
@@ -92,6 +119,12 @@ func (rf *Raft) getLogLength() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	return rf.log.Offset + len(rf.log.Entries)
+}
+
+func (rf *Raft) setLogEntries(logs []LogEntry) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.log.Entries = logs
 }
 
 func (rf *Raft) getLogEntries() []LogEntry {
@@ -211,6 +244,7 @@ func generateNewTerm(number int, state State, electionTimeout time.Duration) Ter
 type SnapShot struct {
 	Data       []byte
 	TermNumber int
+	Index      int
 }
 
 type Log struct {
@@ -248,7 +282,9 @@ const (
 
 	PERSIST Topic = "PERSIST"
 
-	SNAPSHOT Topic = "SNAPSHOT"
+	SNAPSHOT      Topic = "SNAPSHOT"
+	INSTALL_SNAP  Topic = "INSTALL_SNAP"
+	INSTALL_REPLY Topic = "INSTALL_SNAP_REPLY"
 )
 
 func (s State) String() string {
@@ -274,6 +310,7 @@ type InstallSnapshotArgs struct {
 	TermNumber        int
 	LastIncludedIndex int
 	LastIncludedTerm  int
+	SnapshotData      []byte
 }
 
 type InstallSnapshotReply struct {
