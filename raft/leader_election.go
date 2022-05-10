@@ -43,11 +43,16 @@ func (rf *Raft) candidate() {
 	rf.logMsg(ELECTION, "Started new term as a candidate!")
 	rf.setVotedFor(rf.me) // vote for itself
 	votes := 1
+	offset := rf.getOffset()
 	logEntries := rf.getLogEntries()
-	lastLogIndex := len(logEntries) - 1
+	lastLogIndex := rf.getLogLength() - 1
 	lastLogTerm := -1
 	if lastLogIndex != -1 {
-		lastLogTerm = logEntries[lastLogIndex].Term
+		if lastLogIndex-offset == -1 {
+			lastLogTerm = rf.getSnapshotTermNumber()
+		} else {
+			lastLogTerm = logEntries[lastLogIndex-offset].Term
+		}
 	}
 
 	reqVotesArgs := RequestVoteArgs{
@@ -154,7 +159,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.logMsg(VOTE, "Changed my term before voting!")
 	}
 	votedFor := rf.getVotedFor()
-	if votedFor == -1 && rf.logIsUpToDate(args.LastLogIndex, args.LastLogTerm) {
+	if votedFor == -1 && rf.isUpTLogDate(args.LastLogIndex, args.LastLogTerm) {
 		rf.logMsg(VOTE, fmt.Sprintf("voting yes for %v!", args.CandidateId))
 		reply.ReplyVotesTermNumber = rf.getCurrentTermNumber()
 		reply.VoteGranted = true
@@ -172,12 +177,17 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 }
 
 // returns true if the candidate's logs is atleast as up to date as this server's logs
-func (rf *Raft) logIsUpToDate(candidateLastIndex int, candidateLastTerm int) bool {
+func (rf *Raft) isUpTLogDate(candidateLastIndex int, candidateLastTerm int) bool {
 	myEntries := rf.getLogEntries()
-	myLastIndex := len(myEntries) - 1
+	offset := rf.getOffset()
+	myLastIndex := len(myEntries) + offset - 1
 	myLastTerm := -1
 	if myLastIndex != -1 {
-		myLastTerm = myEntries[myLastIndex].Term
+		if myLastIndex-offset == -1 {
+			myLastTerm = rf.getSnapshotTermNumber()
+		} else {
+			myLastTerm = myEntries[myLastIndex-offset].Term
+		}
 	}
 	if candidateLastTerm > myLastTerm {
 		return true
