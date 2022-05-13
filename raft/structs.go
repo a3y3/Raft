@@ -91,6 +91,21 @@ func (rf *Raft) initNextIndex() {
 
 func (rf *Raft) setCommitIndex(commitIndex int) {
 	rf.mu.Lock()
+	if rf.lastApplied-rf.log.Offset < -1 {
+		// Only possibility for this is iff a server crashed and restarted with lastApplied = -1, and offset > 0.
+		// In that case, load server state from snapshot, and update lastApplied.
+		fmt.Printf("\nlastIndex - offset is negative, so sending applyMsg with snapshot!\n")
+		applyMsg := ApplyMsg{
+			SnapshotValid: true,
+			Snapshot:      rf.log.SnapShot.Data,
+			SnapshotTerm:  rf.log.SnapShot.TermNumber,
+			SnapshotIndex: rf.log.SnapShot.Index + 1,
+		}
+		rf.mu.Unlock()
+		rf.applyCh <- applyMsg
+		rf.mu.Lock()
+		rf.lastApplied = rf.log.SnapShot.Index
+	}
 	applyMsgs := make([]ApplyMsg, 0)
 	rf.commitIndex = commitIndex
 	for rf.commitIndex > rf.lastApplied {

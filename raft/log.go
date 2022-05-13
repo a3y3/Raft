@@ -118,7 +118,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 			if prevIndex-offset >= 0 {
 				prevTerm = logEntries[prevIndex-offset].Term
 			} else {
-				rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("Follower is too behind (needs prevIndex=%v with offset %v). Sending InstallSnapshotRPC!", prevIndex, offset))
+				rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("Follower S%v is too behind (needs prevIndex=%v with offset %v). Sending InstallSnapshotRPC!", server_idx, prevIndex, offset))
 				installArgs := InstallSnapshotArgs{
 					TermNumber:        rf.getCurrentTermNumber(),
 					LastIncludedIndex: rf.getSnapshotIndex(),
@@ -136,8 +136,8 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 					rf.logMsg(INSTALL_REPLY, fmt.Sprintf("Updating nextIndex for S%v to %v", server_idx, installArgs.LastIncludedIndex+1))
 					return
 				} else {
-					rf.logMsg(INSTALL_REPLY, "InstallSnapshot gRPC network error, retrying...")
-					continue
+					rf.logMsg(INSTALL_REPLY, fmt.Sprintf("InstallSnapshot gRPC network error for S%v, returning...", server_idx))
+					return
 				}
 			}
 		}
@@ -157,7 +157,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 				return
 			}
 			if reply.ReplyEntriesTermNumber > currentTerm {
-				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Follower has a higher term - returning to follower state!"))
+				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Follower S%v has a higher term - returning to follower state!", server_idx))
 				rf.setCurrentState(follower)
 				return
 			}
@@ -170,6 +170,8 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 				rf.logMsg(APPEND_REPLY, fmt.Sprintf("Got a non-success reply from S%v, so decremented their nextIndex to %v", server_idx, rf.getNextIndexFor(server_idx)))
 				ok = false
 			}
+		} else {
+			rf.logMsg(APPEND_REPLY, fmt.Sprintf("AppendEntries gRPC network error for S%v, retrying...", server_idx))
 		}
 	}
 

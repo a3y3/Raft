@@ -25,6 +25,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.log.SnapShot.Data = snapshot
 	rf.log.SnapShot.TermNumber = rf.currentTerm.Number
 	rf.log.SnapShot.Index = index
+	rf.unsafePersist()
 	rf.mu.Unlock()
 	rf.logMsg(SNAPSHOT, fmt.Sprintf("Trimmed logs: %v (offset %v)", rf.getLogEntries(), rf.getOffset()))
 }
@@ -58,7 +59,15 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 			rf.logMsg(INSTALL_SNAP, "Deleted all log entries!")
 		}
 		rf.setOffset(snapshotIndex + 1)
-		rf.logMsg(INSTALL_SNAP, fmt.Sprintf("Updated offset to %v", snapshotIndex+1))
+		rf.mu.Lock()
+		rf.log.SnapShot = SnapShot{
+			Data:       args.SnapshotData,
+			TermNumber: snapshotTerm,
+			Index:      snapshotIndex,
+		}
+		rf.unsafePersist()
+		rf.mu.Unlock()
+		rf.logMsg(INSTALL_SNAP, fmt.Sprintf("Updated offset to %v and installed Snapshot!", snapshotIndex+1))
 		rf.applyCh <- ApplyMsg{
 			SnapshotValid: true,
 			Snapshot:      args.SnapshotData,

@@ -86,6 +86,15 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	}
 	rf.commitIndex = -1
 	rf.lastApplied = -1
+	rf.log = Log{
+		Entries: []LogEntry{},
+		Offset:  0,
+		SnapShot: SnapShot{
+			Data:       []byte{},
+			TermNumber: 0,
+			Index:      -1,
+		},
+	}
 	rf.applyCh = applyCh
 	// initialize from state persisted before a crash
 	prevState := rf.readPersist(persister.ReadRaftState())
@@ -94,7 +103,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		rf.setTerm(newTerm)
 	}
 
-	rf.logMsg(PERSIST, fmt.Sprintf("Read state. votedFor: %v, term: %v, entries: %v", rf.getVotedFor(), rf.getCurrentTermNumber(), rf.getLogEntries()))
+	rf.logMsg(PERSIST, fmt.Sprintf("Read state. votedFor: %v, term: %v, entries: %v (offset: %v)", rf.getVotedFor(), rf.getCurrentTermNumber(), rf.getLogEntries(), rf.getOffset()))
 
 	go rf.tickr()
 
