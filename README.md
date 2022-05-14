@@ -6,10 +6,10 @@ Raft is a *distributed consensus protocol* for creating a *replicated state mach
 
 ### How does Raft ensure this?
 Raft separates the problem into the following 4 sub problems:
-- Leader Election: By dividing time into logical "terms", a "leader" in each term can dictate what happens and in what order the other "follower" servers execute logs.
-- Log Replication: By storing logs on each server with specific indices and terms, it's easy to decide in what order to execute the logs, and detect out of order message deliveries.
-- Safety: By continously storing current state on persistent disk, fault recovery is basically loading a serialized state of data on boot.
--  Log Compaction: By periodically compressing logs into "snapshots", Raft logs are guaranteed to be small, thus saving on bandwidth.
+- Leader Election (see [leader_election.go](raft/leader_election.go)): By dividing time into logical "terms", a "leader" in each term can dictate what happens and in what order the other "follower" servers execute logs.
+- Log Replication (see [log_replication.go](raft/log_replication.go)): By storing logs on each server with specific indices and terms, it's easy to decide in what order to execute the logs, and detect out of order message deliveries.
+- Safety (see [persistance.go](raft/persistance.go)): By continously storing current state on persistent disk, fault recovery is basically loading a serialized state of data on boot.
+-  Log Compaction (see [log_compaction.go](raft/log_compaction.go)): By periodically compressing logs into "snapshots", Raft logs are guaranteed to be small, thus saving on bandwidth.
 
 ### Build & Run
 This repository is an implementation of Raft in Go. It will be used in the future to create a fault tolerant Key Value store.
