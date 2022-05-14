@@ -14,7 +14,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // the service says it has created a snapshot that has
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
-// that index. Raft should now trim its log as much as possible.
+// that index. Raft will now trim its upto this index.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	index -= 1 // tests assume logs are 1 indexed
 	rf.logMsg(SNAPSHOT, fmt.Sprintf("Snapshot called - trimming all entries upto and including %v", index))
@@ -30,6 +30,8 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.logMsg(SNAPSHOT, fmt.Sprintf("Trimmed logs: %v (offset %v)", rf.getLogEntries(), rf.getOffset()))
 }
 
+// InstallSnapshot RPC handler is called by the leader on a server when it determines that it needs to send information to the server that it trimmed.
+// The server upon receiving this RPC, will delete its log entries, store the snapshot with itself, and update the state machine with the contents.
 func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	rf.rpcLock.Lock()
 	defer rf.rpcLock.Unlock()

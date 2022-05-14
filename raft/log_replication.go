@@ -4,6 +4,9 @@ import (
 	"fmt"
 )
 
+// AppendEntries adds logs inside the RPC args to itself, and resets the election timer (by setting receivedHeartBeat to true).
+// If a higherCommitIndex is found inside of args, commits the entry by sending it to the state machine.
+// An additional optimization allows this function to quickly tell the leader the index this server expects the log entries to start from.
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.rpcLock.Lock()
 	defer rf.rpcLock.Unlock()
@@ -77,6 +80,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 }
 
+// upsertLogs is called by the AppendEntries handler to update (if present) or insert (if not preset) logs starting from startingIndex.
 func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 	rf.mu.Lock()
 	startingIndex -= rf.log.Offset
@@ -99,6 +103,9 @@ func (rf *Raft) upsertLogs(startingIndex int, leaderLogs []LogEntry) {
 	rf.logMsg(UPSERT_LOG, fmt.Sprintf("Upsert finished. New logs are %v (offset: %v)", rf.getLogEntries(), rf.getOffset()))
 }
 
+// sendLogEntries is used by a leader to send logs to a specific follower.
+// log send failures are retried immediately and indefinitely until it succeeds.
+// If this function determines that a follower is too far back, sends an InstallSnapshot RPC. This RPC is not retried indefinitely (but there would be no harm if it did that)
 func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 	ok := false
 

@@ -16,6 +16,8 @@ func generateNewElectionTimeout() time.Duration {
 	return time.Millisecond * time.Duration(milliseconds)
 }
 
+// leader represents a server that successfully won an election for a term.
+// Sends AppendEntries on a fixed interval, and exits once it's no longer the leader.
 func (rf *Raft) leader() {
 	rf.setCurrentState(leader)
 	rf.initNextIndex()
@@ -36,6 +38,9 @@ func (rf *Raft) leader() {
 	rf.logMsg(LEADER, "Stepping down from being a leader")
 }
 
+// candidate represents a server that has started a new election.
+// Votes for itself, then requests votes from other servers for a specific term.
+// Exits once it has either become a new leader, has lost an election, or has timed out waiting for votes.
 func (rf *Raft) candidate() {
 	newTerm := generateNewTerm(rf.getCurrentTermNumber()+1, candidate, generateNewElectionTimeout())
 	rf.setTerm(newTerm) // set this as the new term (also sets state to candidate)
@@ -140,8 +145,8 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 //
-// RequestVote RPC handler.
-//
+// RequestVote RPC handler is handled by a server from whom another server is requesting a vote.
+// Replies true if vote is granted, and false otherwise. See the Raft paper for details on when the server replies yes, or no.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.rpcLock.Lock()
 	defer rf.rpcLock.Unlock()
@@ -208,7 +213,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
-// Send an AppenEntries RPC to a server.
+// Send an AppendEntries RPC to a server.
 // server is the index of the target server in rf.peers[].
 //
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {

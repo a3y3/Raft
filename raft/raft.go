@@ -32,6 +32,7 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
+// Returns the level of verbosity from stdargs.
 func getVerbosity() int {
 	v := os.Getenv("VERBOSE")
 	level := 0
@@ -48,6 +49,7 @@ func getVerbosity() int {
 var debugStart time.Time
 var debugVerbosity int
 
+// Sets format for the default logger.
 func init() {
 	debugVerbosity = getVerbosity()
 	debugStart = time.Now()
@@ -55,6 +57,8 @@ func init() {
 	log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime))
 }
 
+// Logs a message with a specific topic.
+// This is a safe method and will acquire locks to log the latest value of each variable, so locks should not be held when calling this function.
 func (rf *Raft) logMsg(topic Topic, msg string) {
 	if debugVerbosity >= 1 {
 		time := time.Since(debugStart).Milliseconds()
