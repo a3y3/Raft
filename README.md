@@ -21,6 +21,8 @@ go build
 ```
 #### Run
 Since this is more of a library, there's nothing specifically you can do to run it. However, the tests provided in the repo simulate a faulty, unreliable network connection where packets (requests and replies!) may arrive out of order and servers can disconnect or crash at any time. 
+
+`export VERBOSE=1` will turn on verbose logging so you can see what's going on. Then, 
 1. `go test 2A` will test leader election
 2. `go test 2B` will test log replication
 3. `go test 2C` will test crash/fault tolerance

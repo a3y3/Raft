@@ -24,6 +24,7 @@ type Raft struct {
 	log               Log
 	commitIndex       int // index of highest logEntry known to be commited
 	lastApplied       int // index of highest logEntry applied to state machine
+	applyLock         sync.Mutex
 
 	nextIndex  []int // leader only - index of next entry for each follower
 	matchIndex []int // leader only - index of highest entry known to be replicated for each follower
@@ -78,7 +79,7 @@ func (rf *Raft) getLastApplied() int {
 }
 
 func (logEntry LogEntry) String() string {
-	return fmt.Sprintf("(%v);", logEntry.Term)
+	return fmt.Sprintf("(%v);", logEntry.Command)
 }
 
 func (rf *Raft) initNextIndex() {
@@ -119,9 +120,12 @@ func (rf *Raft) setCommitIndex(commitIndex int) {
 	}
 	rf.mu.Unlock()
 	// sends on channels block, so don't hold lock while sending
+	rf.applyLock.Lock()
 	for _, applyMsg := range applyMsgs {
+		rf.logMsg(COMMIT_UPDATE, fmt.Sprintf("Sending value %v on applyMsg!", applyMsg.Command))
 		rf.applyCh <- applyMsg
 	}
+	rf.applyLock.Unlock()
 }
 
 func (rf *Raft) getCommitIndex() int {
