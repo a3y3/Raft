@@ -26,7 +26,6 @@ func (rf *Raft) leader() {
 	for !rf.killed() && rf.getCurrentState() == leader {
 		rf.setReceivedHeartBeat(true)
 		rf.logMsg(LEADER, "Sending HBs")
-		rf.setMatchIndexFor(rf.me, rf.getLogLength()-1)
 		for server_idx := range rf.peers {
 			if server_idx != rf.me {
 				go rf.sendLogEntries(server_idx, currentTerm)

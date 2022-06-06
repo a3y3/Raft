@@ -184,6 +184,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 
 	higherCommitIndex := -1
 	rf.mu.Lock()
+	rf.matchIndex[rf.me] = rf.log.Offset + len(rf.log.Entries) - 1
 	maxIndex := 0
 	for _, matchIndex := range rf.matchIndex {
 		if matchIndex > maxIndex {
@@ -223,7 +224,6 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-
 	if rf.getCurrentState() != leader {
 		return -1, -1, false
 	}
@@ -236,11 +236,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Term:    rf.currentTerm.Number,
 	}
 	rf.log.Entries = append(rf.log.Entries, logEntry)
-	rf.matchIndex[rf.me] = len(rf.log.Entries) + rf.log.Offset - 1
 	rf.unsafePersist()
 	rf.mu.Unlock()
 
 	rf.logMsg(LOG_ENTRIES, fmt.Sprintf("Appended new entry to self. New logEntries is %v (offset: %v)", rf.getLogEntries(), rf.getOffset()))
-
+	for server_idx := range rf.peers {
+		if server_idx != rf.me {
+			go rf.sendLogEntries(server_idx, currentTerm)
+		}
+	}
 	return index + 1, currentTerm, true // the tests assume logs are 1-indexed
 }
