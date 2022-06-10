@@ -67,12 +67,15 @@ func (rf *Raft) readPersist(data []byte) bool {
 			}
 
 			go func() {
+				rf.applyLock.Lock()
 				rf.applyCh <- applyMsg
 				rf.logMsg(PERSIST, "Done sending applyMsg") // !help needed. I have absolutely no idea why this applyMsg needs to be sent in a separate thread. There are no locks held, and the testing framework does no special work when a snapshot is sent on this channel.
 				// Despite this, sending this message on the main thread causes the framework to deadlock. I'm at my wit's end on why this would be the case.
+				rf.lastApplied = rf.getSnapshotIndex()
+				rf.commitIndex = rf.getSnapshotIndex()
+				rf.applyLock.Unlock()
 			}()
-			rf.lastApplied = rf.getSnapshotIndex()
-			rf.commitIndex = rf.getSnapshotIndex()
+
 		}
 	}
 	return true
