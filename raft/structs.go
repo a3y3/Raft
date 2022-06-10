@@ -92,6 +92,11 @@ func (rf *Raft) initNextIndex() {
 
 func (rf *Raft) setCommitIndex(commitIndex int) {
 	rf.mu.Lock()
+	if commitIndex <= rf.commitIndex {
+		// no point in processing anything further
+		rf.mu.Unlock()
+		return
+	}
 	if rf.lastApplied-rf.log.Offset < -1 {
 		// Only possibility for this is iff a server crashed and restarted with lastApplied = -1, and offset > 0.
 		// In that case, load server state from snapshot, and update lastApplied.

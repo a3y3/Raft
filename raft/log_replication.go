@@ -31,17 +31,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			success = true
 		} else {
 			// first check if prevIndex is valid
-			if prevIndex >= len(logEntries)+offset {
-				rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too high (%v >= %v). Replying false", prevIndex, len(logEntries)+offset))
-				success = false
+			if prevIndex >= len(logEntries)+offset || prevIndex-offset < 0 {
 				xIndex = len(logEntries) + offset
+				success = false
+				if prevIndex >= len(logEntries)+offset {
+					rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too high (%v >= %v). Replying with ", prevIndex, len(logEntries)+offset))
+				} else {
+					rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too low (%v) - replying with xIndex %v", prevIndex-offset, xIndex))
+				}
 			} else {
 				// finally, we can compare the terms of the 2 prev indices
-				if prevIndex-offset < 0 {
-					success = false
-					xIndex = offset + 1
-					rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too low (%v) - updating with xIndex %v", prevIndex-offset, xIndex))
-				} else if logEntries[prevIndex-offset].Term != args.PrevLogTerm {
+				if logEntries[prevIndex-offset].Term != args.PrevLogTerm {
 					success = false
 					prevTerm := logEntries[prevIndex-offset].Term
 					i := prevIndex
