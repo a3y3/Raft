@@ -20,6 +20,12 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.logMsg(SNAPSHOT, fmt.Sprintf("Snapshot called - trimming all entries upto and including %v", index))
 	rf.mu.Lock()
 	offset := rf.log.Offset
+	if index-offset+1 > len(rf.log.Entries) {
+		// Install snapshot RPC was likely called just before this, so we can't take a snapshot
+		rf.mu.Unlock()
+		rf.logMsg(SNAPSHOT, fmt.Sprintf("Warning: Skipping Snapshot() since index-offset+1=%v, and logEntries=%v (offset %v)", index-offset+1, rf.getLogEntries(), rf.getOffset()))
+		return
+	}
 	rf.log.Entries = rf.log.Entries[index-offset+1:]
 	rf.log.Offset = index + 1
 	rf.log.SnapShot.Data = snapshot
