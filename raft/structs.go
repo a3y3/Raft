@@ -108,9 +108,11 @@ func (rf *Raft) setCommitIndex(commitIndex int) {
 			SnapshotIndex: rf.log.SnapShot.Index + 1,
 		}
 		rf.mu.Unlock()
+		rf.applyLock.Lock()
 		rf.applyCh <- applyMsg
 		rf.mu.Lock()
 		rf.lastApplied = rf.log.SnapShot.Index
+		rf.applyLock.Unlock()
 	}
 	applyMsgs := make([]ApplyMsg, 0)
 	rf.commitIndex = commitIndex
