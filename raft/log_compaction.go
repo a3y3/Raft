@@ -52,13 +52,14 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		snapshotTerm := args.LastIncludedTerm
 		logEntries := rf.getLogEntries()
 		offset := rf.getOffset()
+		resetStateMachine := false
 		if snapshotIndex-offset >= 0 && snapshotIndex-offset < len(logEntries) && logEntries[snapshotIndex-offset].Term == snapshotTerm {
 			rf.setLogEntries(logEntries[snapshotIndex-offset+1:])
 			rf.logMsg(INSTALL_SNAP, fmt.Sprintf("Trimmed logs until %v. New logs are %v", snapshotIndex-offset, rf.getLogEntries()))
-			return
 		} else {
 			rf.setLogEntries(make([]LogEntry, 0))
 			rf.logMsg(INSTALL_SNAP, "Deleted all log entries!")
+			resetStateMachine = true
 		}
 		rf.setOffset(snapshotIndex + 1)
 		rf.mu.Lock()
@@ -70,14 +71,16 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		rf.unsafePersist()
 		rf.mu.Unlock()
 		rf.logMsg(INSTALL_SNAP, fmt.Sprintf("Updated offset to %v and installed Snapshot!", snapshotIndex+1))
-		rf.applyCh <- ApplyMsg{
-			SnapshotValid: true,
-			Snapshot:      args.SnapshotData,
-			SnapshotTerm:  snapshotTerm,
-			SnapshotIndex: snapshotIndex + 1,
+		if resetStateMachine {
+			rf.applyCh <- ApplyMsg{
+				SnapshotValid: true,
+				Snapshot:      args.SnapshotData,
+				SnapshotTerm:  snapshotTerm,
+				SnapshotIndex: snapshotIndex + 1,
+			}
+			rf.setLastApplied(snapshotIndex)
+			rf.logMsg(INSTALL_SNAP, "Sent Snapshot data on applyCh!")
 		}
-		rf.setLastApplied(snapshotIndex)
-		rf.logMsg(INSTALL_SNAP, "Sent Snapshot data on applyCh!")
 	}
 }
 

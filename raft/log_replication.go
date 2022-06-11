@@ -35,7 +35,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				xIndex = len(logEntries) + offset
 				success = false
 				if prevIndex >= len(logEntries)+offset {
-					rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too high (%v >= %v). Replying with ", prevIndex, len(logEntries)+offset))
+					rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too high (%v >= %v). Replying with xIndex %v", prevIndex, len(logEntries)+offset, xIndex))
 				} else {
 					rf.logMsg(APPEND_ENTRIES, fmt.Sprintf("prevIndex is too low (%v) - replying with xIndex %v", prevIndex-offset, xIndex))
 				}
