@@ -191,7 +191,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 			maxIndex = matchIndex
 		}
 	}
-	for N := rf.commitIndex + 1; N <= maxIndex; N++ {
+	for N := rf.log.Offset; N <= maxIndex; N++ { // A crashed leader could be in a state such that it has logs, but commitIndex is still -1. In any case, starting the count from offset instead of the commitIndex isn't harmful, since the updateCommitIndex function has a safeguard that will refuse lower commitIndices.
 		numServers := 0
 		for _, matchIndex := range rf.matchIndex {
 			if matchIndex >= N {
