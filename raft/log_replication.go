@@ -224,7 +224,7 @@ func (rf *Raft) sendLogEntries(server_idx int, currentTerm int) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	if rf.getCurrentState() != leader {
+	if rf.getCurrentState() != leader || rf.killed() {
 		return -1, -1, false
 	}
 
